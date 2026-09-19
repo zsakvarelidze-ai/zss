@@ -1,0 +1,1011 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{color-scheme:light dark}
+body{margin:0;font:14px system-ui,sans-serif}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+<title>ZSS World Register</title>
+<link rel="stylesheet" href="lib/leaflet.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{--ground:#e9edef;--panel:#fbfcfc;--ink:#111b21;--muted:#5b6b76;--line:#ccd6db;--soft:#e0e7ea;
+ --sea:#e7edef;--paper:#ffffff;--fill:#b9c6cd;--fill2:#cfd9de;
+ --d4:#c2ced4;--d5:#8fb3c4;--d6:#3f7f96;--d7:#1d5468;--d8:#0d3040;--d9:#06202c;
+ --accent:#ad3326;--ok:#0f6f62;--warn:#96690f;--north:#2f6f93;--south:#a8512a;
+ --nland:#cdd6d9;--nlake:#bdd0da;--nriver:#8fadbe;--nurban:#b0bec4;}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ground:#0d1418;--panel:#141d22;
+ --ink:#e6eef2;--muted:#93a6b0;--line:#2b3a42;--soft:#1e2a31;--sea:#16232a;--paper:#33474f;--fill:#39505b;--fill2:#2a3b44;
+ --d4:#33454e;--d5:#3f7186;--d6:#5ba3bf;--d7:#8ecadf;--d8:#c9ecf7;--d9:#eaf7fc;
+ --accent:#e0705f;--ok:#4fc3ad;--warn:#d9a542;--north:#6faad0;--south:#d78e63;
+ --nland:#1d2b33;--nlake:#12333f;--nriver:#35697a;--nurban:#2c414b;}}
+:root[data-theme="dark"]{--ground:#0d1418;--panel:#141d22;--ink:#e6eef2;--muted:#93a6b0;--line:#2b3a42;
+ --soft:#1e2a31;--sea:#16232a;--paper:#33474f;--fill:#39505b;--fill2:#2a3b44;--d4:#33454e;--d5:#3f7186;--d6:#5ba3bf;
+ --d7:#8ecadf;--d8:#c9ecf7;--d9:#eaf7fc;--accent:#e0705f;--ok:#4fc3ad;--warn:#d9a542;
+ --north:#6faad0;--south:#d78e63;
+ --nland:#1d2b33;--nlake:#12333f;--nriver:#35697a;--nurban:#2c414b;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;
+ font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--panel);
+ border-bottom:1px solid var(--soft)}
+.bar{max-width:1180px;margin:0 auto;padding:11px 16px;display:flex;gap:18px;align-items:baseline;flex-wrap:wrap}
+.mark{font-family:"IBM Plex Serif",Georgia,serif;font-weight:600;font-size:19px;letter-spacing:.02em}
+.mark span{color:var(--muted);font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.12em;
+ text-transform:uppercase;margin-left:9px;font-weight:400}
+nav{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+nav button{font:inherit;font-size:13.5px;padding:5px 12px;border:1px solid transparent;background:none;
+ color:var(--muted);border-radius:2px;cursor:pointer}
+nav button:hover{color:var(--ink)}
+nav button[aria-current="true"]{color:var(--ink);border-color:var(--line);background:var(--ground)}
+nav a{font-size:13.5px;padding:5px 12px;color:var(--muted);text-decoration:none;border:1px solid transparent}
+nav a:hover{color:var(--accent)}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:28px 64px}
+h1{font-family:"IBM Plex Serif",Georgia,serif;font-size:clamp(26px,4.6vw,38px);margin:0 0 8px;line-height:1.12;letter-spacing:-.015em}
+h2{font-family:"IBM Plex Serif",Georgia,serif;font-size:20px;margin:0 0 10px;text-wrap:balance}
+.lede{color:var(--muted);max-width:63ch;margin:0 0 22px}
+section{background:var(--panel);border:1px solid var(--soft);border-radius:3px;padding:20px;margin:0 0 18px}
+.grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:22px;align-items:start}
+.split{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:22px;align-items:start}
+.trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+@media (max-width:860px){.grid,.split{grid-template-columns:1fr}.trio{grid-template-columns:1fr}}
+#mapwrap,#detwrap{background:color-mix(in srgb,var(--sea) calc(100% - var(--lit,60%)),var(--paper) var(--lit,60%));border-radius:2px;overflow:hidden;position:relative}
+figure>div{background:var(--sea);border-radius:2px;overflow:hidden;position:relative}
+#mapwrap svg,#detwrap svg{touch-action:none;cursor:grab}
+#mapwrap svg.dragging,#detwrap svg.dragging{cursor:grabbing}
+.zc{position:absolute;right:8px;bottom:8px;display:flex;gap:4px;z-index:3}
+.zc button{font:500 14px/1 "IBM Plex Mono",monospace;width:30px;height:30px;padding:0;
+ border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 88%,transparent);
+ color:var(--ink);border-radius:2px;cursor:pointer}
+.zc button.wide{width:auto;padding:0 9px;font-size:11.5px}
+.zc button:hover{border-color:var(--accent);color:var(--accent)}
+svg{width:100%;height:auto;display:block}
+.u{stroke:var(--panel);stroke-width:.25;fill:var(--d4);fill-opacity:var(--uop,1);cursor:pointer;vector-effect:non-scaling-stroke}
+.u.l5{fill:var(--d5)}.u.l6{fill:var(--d6)}.u.l7{fill:var(--d7)}.u.l8{fill:var(--d8)}.u.l9{fill:var(--d9)}
+.u.none{fill:var(--sea);stroke:var(--line);stroke-width:.3;cursor:default}
+.u.sel{stroke:var(--accent);stroke-width:1.3}
+.o{fill:none;stroke:var(--line);stroke-width:.35;pointer-events:none;vector-effect:non-scaling-stroke}
+#basemap{pointer-events:none;opacity:var(--bop,1)}
+/* the country's own ground, under its units, so a simplification sliver reads as a border */
+.cbg{fill:var(--fill2);stroke:none;pointer-events:none}
+.nland{fill:var(--nland);stroke:none}
+.nlake{fill:var(--nlake);stroke:none}
+.nriver{fill:none;stroke:var(--nriver);stroke-width:.75;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.nurban{fill:var(--nurban);stroke:none;opacity:.8}
+.d{stroke:var(--panel);stroke-width:.4;fill:var(--d6);fill-opacity:var(--uop,1);cursor:pointer;vector-effect:non-scaling-stroke}
+/* a unit is drawn in its own level's colour, the one the legend shows for it */
+.d.l4{fill:var(--d4)}.d.l5{fill:var(--d5)}.d.l6{fill:var(--d6)}
+.d.l7{fill:var(--d7)}.d.l8{fill:var(--d8)}.d.l9{fill:var(--d9)}
+.d:hover{fill:var(--accent);fill-opacity:.55}
+.d.dim{fill:var(--fill2)}
+.d.on{fill:var(--accent)}
+.d.head{fill:var(--accent);stroke:var(--ink);stroke-width:1.1}
+.crumb{font-family:"IBM Plex Mono",monospace;font-size:12.5px;margin:0 0 10px;line-height:1.7}
+.crumb a{color:var(--muted);text-decoration:none;border-bottom:1px solid var(--line);cursor:pointer}
+.crumb a:hover{color:var(--accent);border-color:var(--accent)}
+.crumb b{color:var(--ink);font-weight:500}
+.crumb .sep{color:var(--line);margin:0 5px}
+.selbox{background:var(--ground);border:1px solid var(--soft);border-radius:2px;padding:11px 13px;margin-top:12px}
+.selbox h4{margin:0 0 3px;font-size:15px}
+.selbox .c{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted)}
+.selbox p{font-size:13px;color:var(--muted);margin:8px 0 0}
+label.inc{display:flex;gap:7px;align-items:center;font-size:13px;color:var(--muted);margin-top:10px;cursor:pointer}
+label.inc input{width:auto;margin:0}
+.unit{stroke:var(--panel);stroke-width:1;fill:var(--fill)}
+.unit.north{fill:var(--north)}.unit.south{fill:var(--south)}
+.prov{fill:none;stroke:var(--ink);stroke-width:1.1;opacity:.55}
+.ward{fill:var(--fill);stroke:var(--panel);stroke-width:.4}
+.orphan{fill:var(--accent);stroke:var(--accent);stroke-width:2.5}
+.key{display:flex;flex-wrap:wrap;gap:13px;font-size:12.5px;color:var(--muted);margin-top:10px}
+.key .hint{color:var(--muted);opacity:.75;font-style:italic}
+#wcrumb{margin-bottom:8px}
+#wcrumb b{color:var(--muted);font-weight:400}
+.mapctl{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-top:12px;padding-top:12px;
+ border-top:1px solid var(--soft);font-size:12px;color:var(--muted)}
+.mapctl label{display:flex;gap:7px;align-items:center}
+.mapctl select{font:inherit;font-size:12px;padding:3px 6px;border:1px solid var(--line);
+ background:var(--panel);color:var(--ink);border-radius:2px}
+.mapctl input[type=range]{width:88px;accent-color:var(--d6);height:16px}
+.mapctl b{font-family:"IBM Plex Mono",monospace;font-weight:400;font-size:11px;
+ min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
+.mapctl button{font:inherit;font-size:11.5px;padding:3px 9px;border:1px solid var(--line);
+ background:none;color:var(--muted);border-radius:2px;cursor:pointer}
+.mapctl button:hover{color:var(--accent);border-color:var(--accent)}
+.key i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:5px;vertical-align:-2px}
+figure{margin:0}figcaption{font-size:12.5px;color:var(--muted);margin-top:8px}
+.tally{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 24px;padding:0;list-style:none}
+.tally li{background:var(--panel);border:1px solid var(--soft);border-radius:3px;padding:12px 14px}
+.tally b{display:block;font-family:"IBM Plex Mono",monospace;font-size:25px;font-weight:500;
+ font-variant-numeric:tabular-nums;line-height:1.1}
+.tally span{font-size:12.5px;color:var(--muted)}
+.pane h3{font-size:18px;margin:0 0 3px}
+.pane .code{font-family:"IBM Plex Mono",monospace;color:var(--muted);font-size:12.5px;margin-bottom:10px}
+dl{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;margin:0 0 12px;
+ font-family:"IBM Plex Mono",monospace;font-size:13px;font-variant-numeric:tabular-nums}
+dt{color:var(--muted)}dd{margin:0;text-align:right}
+button.act{font:inherit;font-size:13px;padding:6px 12px;border:1px solid var(--line);background:var(--ground);
+ color:var(--ink);border-radius:2px;cursor:pointer}
+button.act:hover{border-color:var(--accent);color:var(--accent)}
+input{font:inherit;font-size:14px;padding:7px 10px;width:100%;border:1px solid var(--line);
+ background:var(--ground);color:var(--ink);border-radius:2px}
+.hits{list-style:none;margin:10px 0 0;padding:0;max-height:250px;overflow:auto;font-size:13.5px}
+.hits li{padding:4px 0;border-bottom:1px solid var(--soft);cursor:pointer;display:flex;gap:10px;justify-content:space-between}
+.hits li:hover{color:var(--accent)}
+.hits code{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted)}
+.bars{display:grid;gap:7px}
+.bar{display:grid;grid-template-columns:minmax(46px,auto) 1fr 80px;gap:10px;align-items:center;
+ font-size:13px;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bar i{display:block;height:15px;border-radius:2px;background:var(--d6)}
+.bar span:last-child{text-align:right;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+th{text-align:left;font-weight:500;color:var(--muted);font-size:10.5px;letter-spacing:.1em;
+ text-transform:uppercase;padding:0 10px 6px 0;border-bottom:1px solid var(--line)}
+td{padding:5px 10px 5px 0;border-bottom:1px solid var(--soft)}
+td.n{text-align:right;font-family:"IBM Plex Mono",monospace}
+td.bad{color:var(--accent);font-family:"IBM Plex Mono",monospace;font-size:13px}
+td.good{font-family:"IBM Plex Mono",monospace;font-size:13px}
+.scroll{overflow-x:auto}
+.state{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+ padding:2px 7px;border-radius:2px;border:1px solid currentColor;white-space:nowrap}
+.s-rule{color:var(--accent)}.s-held{color:var(--warn)}.s-closed{color:var(--ok)}
+.head{display:flex;gap:12px;align-items:baseline;justify-content:space-between;margin-bottom:12px}
+.lvlab{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.11em;
+ text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+.lvbtns{display:flex;gap:4px;flex-wrap:wrap}
+.lvbtns button{font:inherit;font-size:12.5px;font-family:"IBM Plex Mono",monospace;padding:4px 10px;
+ border:1px solid var(--line);background:var(--ground);color:var(--muted);border-radius:2px;cursor:pointer}
+.lvbtns button:hover{color:var(--ink)}
+.lvbtns button[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding:0;list-style:none}
+.chips li{font-family:"IBM Plex Mono",monospace;font-size:11.5px;border:1px solid var(--line);
+ border-radius:2px;padding:2px 7px;color:var(--muted)}
+.cols{columns:2;column-gap:26px}@media (max-width:640px){.cols{columns:1}}
+p{margin:0 0 11px}p:last-child{margin-bottom:0}
+.note{border-left:2px solid var(--line);padding-left:12px;color:var(--muted);font-size:14px}
+code{font-family:"IBM Plex Mono",monospace;font-size:.92em;background:var(--ground);padding:1px 4px;border-radius:2px}
+footer{color:var(--muted);font-size:12.5px;margin-top:32px;border-top:1px solid var(--soft);padding-top:15px}
+</style>
+
+</head>
+<body>
+<header><div class="bar">
+  <div class="mark">ZSS<span>world register</span></div>
+  <nav>
+    <button data-v="atlas" aria-current="true">Atlas</button>
+    <button data-v="register">Register</button>
+    <button data-v="faults">Faults</button>
+    <a href="map.html">Map &#8599;</a>
+    <a href="https://claude.ai/artifact/Hc9R9dBfDt9ofnaeqcRXna" target="_blank" rel="noopener">Rulings &#8599;</a>
+  </nav>
+</div></header>
+
+<div class="wrap">
+
+<div data-view="atlas">
+  <h1>Atlas</h1>
+  <p class="lede">The map opens at continents. Click one and it frames that continent and shows
+  its regions; click a region and it shows the countries inside it; click a country and its own
+  divisions are drawn below. Each click descends one segment of the code, because a code <i>is</i>
+  the path down the tree &mdash; which is also why selecting a unit lights everything inside it.</p>
+  <section>
+    <div class="grid">
+      <div>
+        <div class="crumb" id="wcrumb"></div>
+        <div id="mapwrap"></div>
+        <div class="key" id="wkey"></div>
+        <div class="mapctl">
+          <label>show
+            <select id="wmode">
+              <option value="group">continents &rarr; regions &rarr; countries</option>
+              <option value="depth">how deep the register goes</option>
+            </select>
+          </label>
+          <label>palette
+            <select id="pal">
+              <option value="slate">slate</option>
+              <option value="ice">ice</option>
+              <option value="moss">moss</option>
+              <option value="ember">ember</option>
+              <option value="plum">plum</option>
+              <option value="mono">mono</option>
+            </select>
+          </label>
+          <label>units <input type="range" id="uop" min="20" max="100" value="100"><b id="uopv">100%</b></label>
+          <label>basemap <input type="range" id="bop" min="0" max="100" value="100"><b id="bopv">100%</b></label>
+          <label>ground <input type="range" id="lit" min="0" max="100" value="60"><b id="litv">60%</b></label>
+          <button id="palrst" type="button">reset</button>
+        </div>
+      </div>
+      <div class="pane" id="pane"></div>
+    </div>
+  </section>
+  <section id="detail" hidden>
+    <div class="head"><h2 id="dtitle">&mdash;</h2><div id="lvbtns" class="lvbtns"></div></div>
+    <div class="grid">
+      <div>
+        <div class="crumb" id="crumb"></div>
+        <p id="dnote" class="note"></p>
+        <label class="inc"><input type="checkbox" id="inc" checked> light everything inside the selection</label>
+        <label class="inc"><input type="checkbox" id="bm" checked> basemap &mdash; neighbouring land, lakes, rivers, built-up areas</label>
+        <div id="selbox"></div>
+        <div style="margin-top:14px"><input id="q" placeholder="search this country's units or codes"></div>
+        <ul class="hits" id="hits"></ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div data-view="register" hidden>
+  <h1>The register</h1>
+  <p class="lede">From continents down to settlements: every unit has a permanent code, a sourced
+  name, and a record of what is known &mdash; including where nothing is known yet.</p>
+  <ul class="tally" id="tally"></ul>
+  <div class="split" style="margin-bottom:18px">
+    <section style="margin:0"><h2>Where the rows are</h2><div class="bars" id="levels"></div>
+      <p class="note" style="margin-top:14px">L6 is the register's centre of gravity. L9 arrived in one
+      run and is already the second largest level, from fifteen countries of a possible 135.</p></section>
+    <section style="margin:0"><h2>Where the data comes from</h2><div class="bars" id="lic"></div>
+      <p class="note" style="margin-top:14px">Share-alike reaches a minority of rows, in 49 of 272
+      files, and ten countries hold 72% of it. A licence question about &ldquo;the register&rdquo; was
+      really a question about fifty files.</p></section>
+  </div>
+  <section><h2>The deepest twenty</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>country</th><th>rows</th><th>entered</th><th>its own law</th></tr></thead>
+      <tbody id="top"></tbody></table></div></section>
+  <section><h2>What is not here</h2><div class="cols">
+    <p><b>Settlements stop at 170,540.</b> That is the whole gazetteer we can reach; the full
+    4.8-million-place dump is not obtainable from here. 64,300 are placed, about 65,000 remain.</p>
+    <p><b>No geometry.</b> The register stores none, by design: an outline is derived from its source
+    when something needs drawing, never stored as truth. These maps are drawn from the sources, not
+    from the register.</p>
+    <p><b>231 countries have no <code>depth_real</code>.</b> For those, &ldquo;not entered&rdquo; and
+    &ldquo;does not exist&rdquo; still look the same &mdash; the one confusion the whole design exists
+    to prevent.</p>
+    <p><b>Two countries are entered too deep.</b> Monaco's constitution forms the territory into a
+    single commune and the Vatican's divides it not at all, yet the register holds rows beneath both.</p>
+  </div></section>
+</div>
+
+<div data-view="faults" hidden>
+  <h1>Open faults</h1>
+  <p class="lede">Every claim here is a claim about ground, so each is drawn from the same polygons
+  the sweep used. Where the register and the map disagree, the map shows where.</p>
+
+  <section>
+    <div class="head"><h2>Belarus: a drawing that said north and meant alphabet</h2>
+      <span class="state s-closed">ruled &mdash; withdrawn</span></div>
+    <div class="split">
+      <figure><div id="m-belarus"></div>
+        <div class="key"><span><i style="background:var(--north)"></i>filed under NORTHERN</span>
+          <span><i style="background:var(--south)"></i>filed under SOUTHERN</span></div>
+        <figcaption>The fault as it stood, kept as the evidence rather than the current state.</figcaption></figure>
+      <div>
+        <p>Gomel is the southernmost oblast and it sat under <b>NORTHERN</b>. Vitebsk is the
+        northernmost and it sat under <b>SOUTHERN</b>. Sorted alphabetically the six read Brest,
+        Gomel, Grodno, Minsk, Mogilev, Vitebsk &mdash; the first three and the last three.</p>
+        <p class="note"><b>Ruled: leave the six.</b> 119 rows retired, 117 reissued; the oblasts are
+        Belarus's own first tier now. The validator learned from it too &mdash; order is where a row
+        is drawn, and a retired row is never drawn, so rule 6 checks live rows only.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Slovakia: the same fallback, withdrawn</h2>
+      <span class="state s-closed">3,014 rows entered</span></div>
+    <div class="split">
+      <figure><div id="m-slovakia"></div>
+        <figcaption>The 79 okresy, coloured by kraj. Both tiers are in the register; the two-way
+        drawing is not.</figcaption></figure>
+      <div>
+        <p>Slovak law builds four rungs and the register held a two-way split no source supports.
+        Withdrawn under the Belarus ruling: the eight kraje are the country's own first tier, with
+        the okresy beneath and 2,927 obce and boroughs below those.</p>
+        <p class="note">The district list gives each okres its kraj, so the geometry could be asked
+        whether it agreed. <b>It agrees on all 79.</b></p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Names the source damaged, and the join that repaired them</h2>
+      <span class="state s-closed">closed in both countries</span></div>
+    <div class="split">
+      <figure><div id="m-slovenia"></div>
+        <figcaption>All 212 ob&#269;ine, carrying their real names.</figcaption></figure>
+      <div>
+        <p>geoBoundaries' Slovak and Slovene name fields contain <b>no accented character at all</b>,
+        and the letters that carried them are replaced, not stripped. Unlike mojibake this is not
+        reversible: the bytes are gone.</p>
+        <div class="scroll"><table>
+          <thead><tr><th>what the source says</th><th>what the place is called</th></tr></thead>
+          <tbody id="svn-diff"></tbody></table></div>
+      </div>
+    </div>
+    <p style="margin-top:16px"><b>There is no decoder, and that is settled.</b> Tested against
+    Slovenia's solved pairs: <b>&#269; becomes c every time</b>, 26 of 26 &mdash; but <b>&scaron;
+    becomes fourteen different letters and &#382; eight</b>, with no pattern by position. Every
+    country this fault touches needs a list, not a transformation.</p>
+    <ul class="chips">
+      <li>185 &mdash; both witnesses agreed</li><li>21 &mdash; damaged name alone, unrivalled</li>
+      <li>6 &mdash; closed on the 212-to-212 bijection</li><li>0 left open</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="head"><h2>Solomon Islands: the province the map forgot</h2>
+      <span class="state s-closed">caught in the run</span></div>
+    <div class="split">
+      <figure><div id="m-solomon"></div>
+        <figcaption>Provinces outlined, 183 wards filled. In red, the three outside every drawn
+        province.</figcaption></figure>
+      <div>
+        <p>geoBoundaries draws Malaita as one island, leaving out Ontong Java and Sikaiana, which are
+        Malaita Province. Wards by area therefore handed Luaniua and Pelau to Isabel.</p>
+        <p>The constituency layer knows what the province layer forgot, so wards route through it.
+        Malaita came out 33 and Honiara 12 afterwards, which are the published counts; before the fix
+        they were 34 and 10. Honiara was missing from L4 altogether.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Where the register does not cover its own countries</h2>
+      <span class="state s-rule">needs a ruling</span></div>
+    <p>Placing settlements turned out to be a tiling test: a settlement that lands in no unit says
+    the units do not cover the country. Five countries failed it, and none of them is a settlement
+    problem.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>country</th><th>settlements</th><th>landing nowhere</th><th>cause</th></tr></thead>
+      <tbody>
+        <tr><td>Germany</td><td class="n">7,628</td><td class="n">1,349 &middot; 18%</td><td>L6 holds 31 Regierungsbezirke; not every Land has them</td></tr>
+        <tr><td>Czechia</td><td class="n">1,470</td><td class="n">602 &middot; 41%</td><td>L6 holds 46 rows against 76 okresy</td></tr>
+        <tr><td>Philippines</td><td class="n">4,523</td><td class="n">637 &middot; 14%</td><td>independent cities sit outside the provinces</td></tr>
+        <tr><td>Poland</td><td class="n">3,022</td><td class="n">360 &middot; 12%</td><td>the cities with powiat rights</td></tr>
+        <tr><td>Austria</td><td class="n">2,266</td><td class="n">all</td><td>L6's 39 rows reproduce no source level at all</td></tr>
+      </tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Bratislava and Ko&scaron;ice: a unit that does not nest</h2>
+      <span class="state s-closed">ruled</span></div>
+    <p>Bratislava is <b>one obec</b> divided into 17 mestsk&eacute; &#269;asti &mdash; and it spans
+    <b>five okresy</b>. Ko&scaron;ice is one obec across four. The city is bigger than its parent tier
+    and smaller than the tier above, so a containment tree has no slot for it.</p>
+    <p>What goes in is what nests: the 39 boroughs sit at L6 under the okres that contains each.
+    <b>The two cities have no row</b>, and that absence is the honest record of a real fact.</p>
+    <p class="note">The first cross-cutting unit the register has met. The rule is written:
+    <i>enter the tiling, record the unit that does not tile.</i></p>
+  </section>
+
+  <section>
+    <div class="head"><h2>Monaco and Vatican City: entered below anything that exists</h2>
+      <span class="state s-rule">needs a ruling</span></div>
+    <p>Monaco's Constitution, article 78: <i>le territoire de la Principaut&eacute; forme une seule
+    commune</i> &mdash; and it gives that commune no subdivisions. The Vatican's Fundamental Law of
+    31 July 2026, article 4, takes the territory whole from the Lateran Treaty and divides it no
+    further.</p>
+    <p>The register holds eight Monegasque rows and two Vatican rows at L4. The ground is real; the
+    word <i>administrative</i> was not. They keep their codes. What is open is what they should now
+    say they are.</p>
+  </section>
+
+  <section>
+    <div class="head"><h2>Closed this week</h2><span class="state s-closed">5,217 rows</span></div>
+    <div class="trio">
+      <figure><div id="m-malta"></div><figcaption><b>Malta</b> &mdash; 68 localities at L5. The six
+        districts came out 14 / 13 / 11 / 10 / 6 / 14, the published counts exactly.</figcaption></figure>
+      <figure><div id="m-latvia"></div><figcaption><b>Latvia</b> &mdash; 43 administrative territories
+        and 589 pagasti. R&#299;ga came out 1, which is right.</figcaption></figure>
+      <figure><div id="m-mkd"></div><figcaption><b>North Macedonia</b> &mdash; 84 op&scaron;tini.
+        Skopje came out 17, which is right.</figcaption></figure>
+    </div>
+  </section>
+</div>
+
+<footer>
+Boundaries from geoBoundaries (gbOpen) and Natural Earth; some layers &copy; OpenStreetMap
+contributors under the Open Database Licence. Settlement names from the GeoNames-derived
+cities.json (CC BY 4.0); administrative structure and coding: ZSS, Zssloginc. The register's own
+files are not published.
+</footer>
+</div>
+
+<script src="data/site.js"></script>
+<script>
+const D = window.__ZSSDATA__, fmt = n => n.toLocaleString('en-US'), st = D.st;
+/* Units arrive as [codeSuffix, name, path] in the build that has a size ceiling to respect.
+   Expanded once here, so every line after this sees {c,n,d} exactly as before. */
+Object.keys(D.atlas).forEach(code=>{
+  const a=D.atlas[code]; if(!a.z) return;
+  const pre=code+'.';
+  Object.keys(a.levels).forEach(L=>{
+    a.levels[L]=a.levels[L].map(u=>({c:pre+u[0], n:u[1], d:u[2]}));
+  });
+  a.z=0;
+});
+
+/* ---- views */
+const views = [...document.querySelectorAll('[data-view]')];
+document.querySelector('nav').addEventListener('click', e => {
+  const b = e.target.closest('button[data-v]'); if(!b) return;
+  views.forEach(v => v.hidden = v.dataset.view !== b.dataset.v);
+  document.querySelectorAll('nav button').forEach(x => x.setAttribute('aria-current', x === b));
+  window.scrollTo({top:0});
+  if(b.dataset.v === 'faults') drawFaults();
+  if(b.dataset.v === 'register') drawRegister();
+});
+
+/* ---- atlas */
+const cls = d => d>=9?'l9':d===8?'l8':d===7?'l7':d===6?'l6':d===5?'l5':d===4?'l4':'none';
+/* One map, all the way down. The world, a continent, a region and a country's own divisions
+   are all drawn into the same frame -- clicking a country zooms this map into it rather than
+   handing you a second one underneath. Going back up re-renders the world into the same place. */
+let inCountry = null, unitPath = null;
+function renderWorld(){
+let s = '<svg viewBox="0 0 '+D.w+' '+(D.h*0.86)+'" role="img" aria-label="World map; click a country">';
+/* One shape per country. The divisions inside a country are drawn on the country's own map,
+   below; up here they would only put four thousand borders across a view whose whole point is
+   to show seven continents. At the continent and region stages the stroke is set to the fill,
+   so neighbours in the same group read as one mass rather than as a mosaic. */
+/* Keyed by the register's own row, not by ISO. That is what lets Greenland appear at all --
+   it has no ISO of its own, it is 5.3.4 DENMARK TERRITORIES, filed under Northern America
+   because that is where the ground is. */
+s += Object.keys(D.wc).map(code=>{
+  const iso=D.iso[code]||'';
+  return '<path class="u '+cls(D.depth[iso]||0)+'" data-c="'+code+'" d="'+D.wc[code].d
+    +'"><title>'+((D.tree[code]&&D.tree[code].n)||code)+' · '+code+'</title></path>';
+}).join('');
+document.getElementById('mapwrap').innerHTML = s+'</svg>';
+zoomable(document.getElementById('mapwrap'), false);
+inCountry = null;
+document.getElementById('detail').hidden = true;
+}
+renderWorld();
+
+/* ---- the world drills down the way the codes do ----------------------------------------
+   A code IS the path: 4 is Europe, 4.3 Southern Europe, 4.3.15 Spain. So the map opens at
+   continents and every click descends exactly one segment, which is the same movement the
+   grammar makes. Nothing below the stage you are on is drawn, which is also why it is quick. */
+const TREE = D.tree;
+let nav = [], wmode = 'group';
+
+const codeOf = c => c;      // data-c is the register code itself now
+const pre = (code, n) => { const p = code.split('.'); return p.length >= n ? p.slice(0, n).join('.') : ''; };
+const within = (code, parent) => !parent || code === parent || code.indexOf(parent + '.') === 0;
+
+function groups(){
+  const d = nav.length + 1, parent = nav.length ? nav[nav.length - 1] : '';
+  return Object.keys(TREE)
+    .filter(c => TREE[c].l === d && within(c, parent))
+    .sort((a, b) => (TREE[a].o || 0) - (TREE[b].o || 0) || a.localeCompare(b));
+}
+
+/* Continents are categories, not a series, so they get separate hues rather than one ramp --
+   a ramp would say Africa is less of something than Asia. */
+function catColor(i, n){
+  const h = Math.round((i * (360 / Math.max(n, 1)) + 18) % 360);
+  return isDark() ? 'hsl(' + h + ' 44% 57%)' : 'hsl(' + h + ' 56% 44%)';
+}
+
+function paintWorld(){
+  const gs = groups(), col = {}, d = nav.length + 1;
+  gs.forEach((c, i) => col[c] = catColor(i, gs.length));
+  const parent = nav.length ? nav[nav.length - 1] : '';
+  document.querySelectorAll('#mapwrap path.u').forEach(p => {
+    const code = codeOf(p.dataset.c);
+    if(wmode === 'depth'){ p.style.fill = ''; p.style.stroke = ''; p.style.strokeWidth = ''; p.style.fillOpacity = ''; return; }
+    if(!code){ p.style.fill = 'var(--fill2)'; p.style.stroke = 'var(--fill2)'; p.style.fillOpacity = '.5'; return; }
+    const inside = within(code, parent), g = pre(code, d);
+    const c = (inside && col[g]) ? col[g] : 'var(--fill2)';
+    p.style.fill = c;
+    // Stroke matches fill, and is widened a little, so two countries of the same continent stop
+    // having a border between them. The widening matters: neighbouring outlines are separate
+    // simplified polygons and do not meet exactly, so a hairline of background shows through the
+    // seam unless the stroke is thick enough to close it.
+    p.style.stroke = nav.length < 2 ? c : 'var(--panel)';
+    p.style.strokeWidth = nav.length < 2 ? '0.9' : '';
+    p.style.fillOpacity = inside ? '' : '.3';
+  });
+  wlegend(gs, col);
+  wcrumb();
+}
+
+function fitGroup(code){
+  const host = document.getElementById('mapwrap'), cam = host.__cam;
+  if(!cam) return;
+  if(!code){ cam.reset(); return; }
+  // Not the outright bounding box. Europe's codes include Greenland, the Azores, the Canaries
+  // and the French overseas departments, so its true extent is most of the planet and framing
+  // it shows you nothing. Trim a little weight off each edge instead, by area, and the camera
+  // lands on the mass of the thing while the outliers stay drawn, just outside the frame.
+  // Each ring has its own box, because a row's full extent is not a place: Spain's outline runs
+  // to the Canaries, and one box around both frames neither.
+  const parts = [];
+  Object.keys(D.wc).forEach(c => {
+    if(!within(c, code)) return;
+    (D.wc[c].rb||[]).forEach(q => {
+    const b = {x:q[0], y:q[1], width:q[2]-q[0], height:q[3]-q[1]};
+    if(!b.width && !b.height) return;
+    // One path per country now, so a country's box covers everything it owns: the United States'
+    // runs the full width of the map, because the Aleutians cross the edge of the projection.
+    // A box that wide is not a place a camera can aim at, so it is left out of the framing.
+    if(b.width > D.w * 0.45 || b.height > D.h * 0.55) return;
+    parts.push({x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height,
+                w: Math.max(b.width * b.height, 1e-6)});
+    });
+  });
+  if(!parts.length) return;
+  const total = parts.reduce((a, q) => a + q.w, 0), CUT = 0.04 * total;
+  const edge = (key, dir) => {
+    const a = parts.slice().sort((m, n) => dir > 0 ? m[key] - n[key] : n[key] - m[key]);
+    let acc = 0;
+    for(const q of a){ acc += q.w; if(acc > CUT) return q[key]; }
+    return a[a.length - 1][key];
+  };
+  let x0 = edge('x0', 1), y0 = edge('y0', 1), x1 = edge('x1', -1), y1 = edge('y1', -1);
+  if(!(x1 > x0) || !(y1 > y0)){                       // one dominant shape: fall back to it
+    const big = parts.sort((m, n) => n.w - m.w)[0];
+    x0 = big.x0; y0 = big.y0; x1 = big.x1; y1 = big.y1;
+  }
+  cam.fit({x: x0, y: y0, width: x1 - x0, height: y1 - y0}, 0.08);
+}
+
+function wcrumb(){
+  const el = document.getElementById('wcrumb');
+  const parts = ['<a data-nav="">World</a>'];
+  nav.forEach(c => parts.push('<a data-nav="' + c + '">' + TREE[c].n + '</a>'));
+  if(wmode === 'depth') parts.push('<b>coloured by depth</b>');
+  el.innerHTML = parts.join('<span class="sep">›</span>');
+}
+
+function wlegend(gs, col){
+  const k = document.getElementById('wkey');
+  if(wmode === 'depth'){
+    k.innerHTML = [4,5,6,7,8,9].map(L => '<span><i style="background:var(--d' + L + ')"></i>L' + L
+      + (L === 9 ? ' — settlements' : '') + '</span>').join('');
+    return;
+  }
+  const what = nav.length === 0 ? 'continent' : nav.length === 1 ? 'region' : 'country';
+  k.innerHTML = gs.slice(0, 26).map(c =>
+      '<span><i style="background:' + col[c] + '"></i>' + TREE[c].n + '</span>').join('')
+    + '<span class="hint">' + (nav.length < 2
+        ? 'click a ' + what + ' to open it'
+        : 'click a country to draw its divisions') + '</span>';
+}
+
+function goto(code){
+  const n = code ? code.split('.').length : 0;
+  if(n >= 3){ drawBranch(code); return; }        // a country or anything inside one
+  nav = code ? (n === 2 ? [pre(code,1), code] : [pre(code,1)]) : [];
+  if(inCountry){ selCode=null; cur=null; unitPath=null; renderWorld(); }
+  paintWorld(); fitGroup(code || '');
+}
+
+document.getElementById('wcrumb').addEventListener('click', e => {
+  const a = e.target.closest('a[data-nav]'); if(!a) return;
+  goto(a.dataset.nav);
+});
+document.getElementById('wmode').addEventListener('change', e => {
+  wmode = e.target.value;
+  if(wmode === 'depth'){ nav = []; document.getElementById('mapwrap').__cam.reset(); }
+  paintWorld();
+});
+
+
+const pane=document.getElementById('pane'), det=document.getElementById('detail');
+let sel=null, cur=null, curLevel=null, selCode=null;
+function openCountry(code){
+  const iso=D.iso[code]||'';
+  const nm=(D.tree[code]&&D.tree[code].n)||D.cname[iso]||code;
+  if(!iso){ pane.innerHTML='<h3>'+nm+'</h3><div class="code">'+code+'</div>'
+    +'<p class="note">A territory row. It holds ground on the map; its own divisions, if any, '
+    +'are entered under the country that holds it.</p>'; return; }
+  const a=D.atlas[code];
+  pane.innerHTML='<h3>'+nm+'</h3><div class="code">'+code+'</div><dl>'
+    +'<dt>rows</dt><dd>'+fmt(D.rows[iso])+'</dd>'
+    +'<dt>entered to</dt><dd>L'+D.depth[iso]+'</dd>'
+    +'<dt>its own law</dt><dd>'+(D.real[iso]?'L'+D.real[iso]:'not yet sourced')+'</dd></dl>'
+    +(a?''      // the level buttons live under the map now; selecting a country draws it at once
+       :'<p class="note">Not yet linked to shapes. The register holds its rows; joining each code to a polygon is a separate run.</p>');
+
+}
+function nameOf(a, code){
+  for(const L of Object.keys(a.levels)){
+    const u=a.levels[L].find(x=>x.c===code); if(u) return u.n;
+  }
+  return code;
+}
+function paint(){
+  if(!cur) return;
+  const inc=document.getElementById('inc').checked;
+  document.querySelectorAll('#mapwrap path[data-u]').forEach(p=>{
+    const c=p.dataset.u;
+    p.classList.remove('on','dim','head');
+    if(!selCode) return;
+    if(c===selCode) p.classList.add('head');
+    else if(inc && c.startsWith(selCode+'.')) p.classList.add('on');
+    else p.classList.add('dim');
+  });
+  const cb=document.getElementById('crumb');
+  if(!selCode){ cb.innerHTML=''; document.getElementById('selbox').innerHTML=''; return; }
+  const segs=selCode.split('.'), parts=[];
+  for(let n=4;n<=segs.length;n++){
+    const code=segs.slice(0,n).join('.');
+    parts.push(n===segs.length ? '<b>'+nameOf(cur,code)+'</b>'
+      : '<a data-crumb="'+code+'">'+nameOf(cur,code)+'</a>');
+  }
+  cb.innerHTML='<a data-crumb="">'+D.cname[cur.iso]+'</a><span class="sep">›</span>'+parts.join('<span class="sep">›</span>');
+  let inside=0;
+  Object.keys(cur.levels).forEach(L=>{ inside += cur.levels[L].filter(u=>u.c.startsWith(selCode+'.')).length; });
+  document.getElementById('selbox').innerHTML='<div class="selbox"><h4>'+nameOf(cur,selCode)
+    +'</h4><div class="c">'+selCode+'</div><p>'
+    +(inside ? fmt(inside)+' units inside it, across the levels this country has drawn.'
+             : 'Nothing drawn inside it — it is a leaf at the levels prepared here.')+'</p></div>';
+}
+/* The basemap is geometry, not tiles. A published page may not fetch an image, so the context
+   ships inside it: Natural Earth, already clipped to this frame and projected with it. It draws
+   first and takes no pointer events, so every click still lands on a unit. */
+function basemap(code){
+  if(!document.getElementById('bm').checked) return '';
+  const n = D.ne && D.ne[code]; if(!n) return '';
+  const g = (cls, ds) => (ds && ds.length)
+    ? ds.map(d=>'<path class="'+cls+'" d="'+d+'"/>').join('') : '';
+  return '<g id="basemap">'+g('nland',n.land)+g('nurban',n.urban)
+       + g('nlake',n.lakes)+g('nriver',n.rivers)+'</g>';
+}
+/* One segment per click, all the way down.
+   Clicking a country used to answer with its deepest level entire -- 3,142 counties for the
+   United States, a level nobody asked for. The rule above a country is "show me the children
+   of what I clicked", and there is no reason it should stop at the border. So this draws the
+   children of ONE unit: the country's four regions, then that region's states, then that
+   state's counties. Across the whole register the median unit has seven children and nine in
+   ten have twenty-five or fewer, so a click is answered by a handful of shapes. */
+function drawBranch(parent){
+  const country = pre(parent, 3), a = D.atlas[country];
+  if(!a){ openCountry(country); return; }
+  const depth = parent.split('.').length + 1;
+  let units = (a.levels[String(depth)] || []).filter(u => u.c.indexOf(parent + '.') === 0);
+  let level = depth, sel = null;
+  if(!units.length){
+    // a leaf: show it among its siblings with it picked out, rather than an empty frame
+    const up = parent.slice(0, parent.lastIndexOf('.'));
+    level = parent.split('.').length;
+    units = (a.levels[String(level)] || []).filter(u => u.c.indexOf(up + '.') === 0);
+    sel = parent;
+    if(!units.length) return;
+  }
+  cur = a; curLevel = level; selCode = sel; inCountry = country; unitPath = parent;
+
+  let t='<svg viewBox="0 0 '+a.w+' '+a.h+'" role="img" aria-label="Inside '+(D.tree[country]?D.tree[country].n:country)+'">';
+  t+=basemap(country);
+  if(a.outline) t+='<path class="cbg" d="'+a.outline+'"/>';
+  t+=units.map(u=>'<path class="d l'+level+'" data-u="'+u.c+'" d="'+u.d
+     +'"><title>'+(u.n||u.c)+' · '+u.c+'</title></path>').join('');
+  const host=document.getElementById('mapwrap');
+  host.innerHTML=t+'</svg>';
+  zoomable(host, true);
+  document.getElementById('detail').hidden=false;
+  branchCrumb(a, parent, units, level);
+  paint();
+  fitDrawn(host);
+}
+
+/* frame whatever was just drawn */
+function fitDrawn(host){
+  const cam=host.__cam; if(!cam) return;
+  const ps=[...host.querySelectorAll('path.d')]; if(!ps.length) return;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  ps.forEach(p=>{ const b=p.getBBox(); if(!b.width&&!b.height) return;
+    x0=Math.min(x0,b.x); y0=Math.min(y0,b.y);
+    x1=Math.max(x1,b.x+b.width); y1=Math.max(y1,b.y+b.height); });
+  if(x1>x0) cam.fit({x:x0,y:y0,width:x1-x0,height:y1-y0}, 0.08);
+}
+
+/* the breadcrumb keeps going: World, continent, region, country, then every unit above you */
+function branchCrumb(a, parent, units, level){
+  const nameAt = c => {
+    if(D.tree[c]) return D.tree[c].n;
+    for(const L in a.levels){ const u=a.levels[L].find(q=>q.c===c); if(u&&u.n) return u.n; }
+    return c;
+  };
+  const segs = parent.split('.'), parts = ['<a data-nav="">World</a>'];
+  for(let n=1; n<=segs.length; n++){
+    const c = segs.slice(0,n).join('.');
+    if(n<3 && !D.tree[c]) continue;
+    parts.push(n===segs.length ? '<b>'+nameAt(c)+'</b>' : '<a data-nav="'+c+'">'+nameAt(c)+'</a>');
+  }
+  document.getElementById('wcrumb').innerHTML=parts.join('<span class="sep">›</span>');
+  document.getElementById('wkey').innerHTML=
+    '<span><i style="background:var(--d'+level+')"></i>L'+level+' · '+fmt(units.length)
+    + (units.length===1?' unit':' units')+'</span>'
+    + '<span class="hint">click one to go deeper; the breadcrumb goes back up</span>';
+  document.getElementById('dtitle').textContent=nameAt(parent)+' — L'+level;
+  const kids=(a.levels[String(level+1)]||[]).length;
+  document.getElementById('dnote').textContent=
+    fmt(units.length)+' units at L'+level+' inside '+nameAt(parent)
+    +(kids?'. Click one to open what is inside it.':'. This is as deep as this country goes.');
+}
+
+function drawCountry(code, level, keepSel){
+  const a=D.atlas[code]; if(!a) return;
+  if(cur!==a && !keepSel) selCode=null;
+  cur=a;
+  const avail=Object.keys(a.levels).map(Number).sort((x,y)=>x-y);
+  curLevel = level && a.levels[level] ? Number(level) : avail[avail.length-1];
+  const units=a.levels[String(curLevel)];
+  document.getElementById('dtitle').textContent=D.cname[a.iso]+' — L'+curLevel;
+  document.getElementById('lvbtns').innerHTML=avail.map(L=>
+    '<button data-l="'+L+'" aria-pressed="'+(L===curLevel)+'">L'+L+' · '+fmt(a.levels[String(L)].length)+'</button>').join('');
+  let t='<svg viewBox="0 0 '+a.w+' '+a.h+'" role="img" aria-label="Divisions of '+D.cname[a.iso]+' at level '+curLevel+'">';
+  t+=basemap(a.code);
+  if(a.outline) t+='<path class="cbg" d="'+a.outline+'"/>';
+  t+=units.map(u=>'<path class="d l'+curLevel+'" data-u="'+u.c+'" d="'+u.d+'"><title>'+u.n+' · '+u.c+'</title></path>').join('');
+  document.getElementById('mapwrap').innerHTML=t+'</svg>';
+  zoomable(document.getElementById('mapwrap'), true);
+  inCountry = code;
+  countryCrumb(a);
+  document.getElementById('dnote').innerHTML=fmt(units.length)+' units at L'+curLevel
+    +(curLevel===a.deepest ? ', drawn from '+a.src+'.' : ', derived by union from L'+a.deepest
+      +' — a parent’s outline is exactly its children joined, which the codes already say.')
+    +' Click one to select it; scroll to zoom, drag to pan.';
+  document.getElementById('q').value=''; document.getElementById('hits').innerHTML='';
+  det.hidden=false;
+  paint();
+}
+/* the breadcrumb keeps running past the country, and the legend becomes the level key */
+function countryCrumb(a){
+  const code=a.code;
+  const parts=['<a data-nav="">World</a>'];
+  [pre(code,1), pre(code,2)].forEach(c=>{ if(TREE[c]) parts.push('<a data-nav="'+c+'">'+TREE[c].n+'</a>'); });
+  parts.push('<b>'+((TREE[code]&&TREE[code].n)||D.cname[a.iso]||code)+'</b>');
+  document.getElementById('wcrumb').innerHTML=parts.join('<span class="sep">›</span>');
+  document.getElementById('wkey').innerHTML=Object.keys(a.levels).map(Number).sort((x,y)=>x-y)
+    .map(L=>'<span><i style="background:var(--d'+L+')"></i>L'+L+'</span>').join('')
+    + '<span class="hint">the level buttons below switch depth; the breadcrumb goes back up</span>';
+}
+document.getElementById('lvbtns').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-l]'); if(!b||!cur) return;
+  drawCountry(cur.code, b.dataset.l, true);
+});
+
+document.getElementById('crumb').addEventListener('click',e=>{
+  const a=e.target.closest('a[data-crumb]'); if(!a) return;
+  selCode = a.dataset.crumb || null; paint();
+});
+document.getElementById('inc').addEventListener('change', paint);
+document.getElementById('bm').addEventListener('change',()=>{ if(cur) drawCountry(cur.code, curLevel, true); });
+function selectCountry(code){
+  if(sel) sel.forEach(x=>x.classList.remove('sel'));
+  sel=[...document.querySelectorAll('path[data-c="'+code+'"]')];
+  sel.forEach(x=>x.classList.add('sel'));
+  openCountry(code);
+  if(code && D.atlas[code]){
+    drawCountry(code, null, false);
+    document.getElementById('detail').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+}
+document.getElementById('mapwrap').addEventListener('click',e=>{
+  if(inCountry){                       // inside a country, a click goes one level deeper
+    const u=e.target.closest('path[data-u]'); if(!u||!cur) return;
+    drawBranch(u.dataset.u);
+    return;
+  }
+  const p=e.target.closest('path[data-c]'); if(!p) return;
+  const code=p.dataset.c;
+  if(wmode==='depth'){ selectCountry(code); return; }
+  // one segment per click. A click outside the branch you are in jumps to that branch instead
+  // of descending, so you are never stranded on the wrong continent.
+  if(nav.length===0){ goto(pre(code,1)); return; }
+  if(pre(code,1)!==nav[0]){ goto(pre(code,1)); return; }
+  if(nav.length===1){ goto(pre(code,2)); return; }
+  if(pre(code,2)!==nav[1]){ goto(pre(code,2)); return; }
+  selectCountry(code);
+});
+document.getElementById('q').addEventListener('input',e=>{
+  const q=e.target.value.trim().toLowerCase(), ul=document.getElementById('hits');
+  if(!cur||q.length<2){ ul.innerHTML=''; return; }
+  ul.innerHTML=cur.levels[String(curLevel)].filter(u=>u.n.toLowerCase().includes(q)||u.c.includes(q)).slice(0,40)
+    .map(u=>'<li data-u="'+u.c+'"><span>'+u.n+'</span><code>'+u.c+'</code></li>').join('');
+});
+document.getElementById('hits').addEventListener('click',e=>{
+  const li=e.target.closest('li[data-u]'); if(!li) return;
+  selCode=li.dataset.u; paint();
+});
+/* The page opens at continents and draws nothing below that until asked. Opening a country
+   on load meant parsing and rendering eight thousand municipios before anyone had clicked. */
+pane.innerHTML='<p class="note">Seven continents, then twenty-four regions, then the countries '
+  +'inside them. Each click goes down one segment of the code — which is what a code is: '
+  +'<code>4.3.15</code> is Europe, Southern Europe, Spain.</p>';
+
+/* ---- map appearance: ground, opacity, palette --------------------------------
+   The level ramp is generated rather than listed, because the six levels are one ordered
+   series and a series should be one rule. Each palette is a hue and a saturation range; the
+   lightness walks the ramp -- downward on a light ground, upward on a dark one, so L9 is
+   always the far end from the paper and the ordering survives either theme. */
+const PALS = {
+  slate:{h:198,s:[12,42],label:'slate'}, ice:{h:212,s:[26,58]}, moss:{h:150,s:[16,44]},
+  ember:{h:19,s:[24,56]},  plum:{h:288,s:[16,40]}, mono:{h:205,s:[0,5]}
+};
+const MAPDEF = {pal:'slate', uop:100, bop:100, lit:60};
+let mapcfg = Object.assign({}, MAPDEF);
+const isDark = () => {
+  const t=document.documentElement.getAttribute('data-theme');
+  if(t==='dark') return true; if(t==='light') return false;
+  return matchMedia('(prefers-color-scheme: dark)').matches;
+};
+function applyMap(){
+  const p=PALS[mapcfg.pal]||PALS.slate, dark=isDark(), r=document.documentElement.style;
+  // The near end of the ramp has to clear the map's ground, and the ground slider moves:
+  // at 100% it reaches --paper, which is 25% lightness in dark and 100% in light. L4 used to be
+  // generated at 24% dark, one point from the ground it sat on, so L4 units simply vanished at
+  // that setting. Both ends now keep their distance at either extreme of the slider.
+  const L = dark ? [38,49,60,71,81,92] : [76,64,52,40,27,15];
+  L.forEach((l,i)=> r.setProperty('--d'+(i+4),
+    'hsl('+p.h+' '+Math.round(p.s[0]+(p.s[1]-p.s[0])*i/5)+'% '+l+'%)'));
+  r.setProperty('--uop', mapcfg.uop/100);
+  r.setProperty('--bop', mapcfg.bop/100);
+  r.setProperty('--lit', mapcfg.lit+'%');
+  ['uop','bop','lit'].forEach(k=>{
+    const i=document.getElementById(k), v=document.getElementById(k+'v');
+    if(i) i.value=mapcfg[k]; if(v) v.textContent=mapcfg[k]+'%';
+  });
+  const sel=document.getElementById('pal'); if(sel) sel.value=mapcfg.pal;
+  try{ localStorage.setItem('zss.map', JSON.stringify(mapcfg)); }catch(e){}
+}
+try{ const saved=JSON.parse(localStorage.getItem('zss.map')||'null');
+     if(saved) mapcfg=Object.assign({}, MAPDEF, saved); }catch(e){}
+['uop','bop','lit'].forEach(k=>{
+  const i=document.getElementById(k);
+  if(i) i.addEventListener('input', ()=>{ mapcfg[k]=Number(i.value); applyMap(); });
+});
+document.getElementById('pal').addEventListener('change', e=>{ mapcfg.pal=e.target.value; applyMap(); });
+document.getElementById('palrst').addEventListener('click', ()=>{ mapcfg=Object.assign({}, MAPDEF); applyMap(); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyMap);
+applyMap();
+paintWorld();
+
+/* ---- pan and zoom: the viewBox is the camera, so nothing is re-rendered */
+function zoomable(host, fitSelection){
+  const svg=host.querySelector('svg'); if(!svg) return;
+  const vb=svg.getAttribute('viewBox').split(/\s+/).map(Number);
+  let cam=vb.slice(), home=vb.slice();
+  const apply=()=>svg.setAttribute('viewBox', cam.map(n=>Math.round(n*100)/100).join(' '));
+  const clampScale=()=>{
+    const min=home[2]/60, max=home[2]*1.6;              // 60x in, a little out
+    if(cam[2]<min){ const k=min/cam[2]; cam[2]*=k; cam[3]*=k; }
+    if(cam[2]>max){ const k=max/cam[2]; cam[2]*=k; cam[3]*=k; }
+  };
+  const at=e=>{ const r=svg.getBoundingClientRect();
+    return [cam[0]+(e.clientX-r.left)/r.width*cam[2], cam[1]+(e.clientY-r.top)/r.height*cam[3]]; };
+  function zoomBy(f, px, py){
+    const nx=cam[2]*f, ny=cam[3]*f;
+    cam[0]=px-(px-cam[0])*(nx/cam[2]); cam[1]=py-(py-cam[1])*(ny/cam[3]);
+    cam[2]=nx; cam[3]=ny; clampScale(); apply();
+  }
+  svg.addEventListener('wheel', e=>{ e.preventDefault();
+    const [px,py]=at(e); zoomBy(Math.exp(e.deltaY*0.0016), px, py); }, {passive:false});
+  let drag=null, moved=0, held=0;
+  svg.addEventListener('pointerdown', e=>{
+    drag={x:e.clientX,y:e.clientY,c:cam.slice(),id:e.pointerId}; moved=0; });
+  svg.addEventListener('pointermove', e=>{ if(!drag) return;
+    const r=svg.getBoundingClientRect();
+    const dx=(e.clientX-drag.x)/r.width*drag.c[2], dy=(e.clientY-drag.y)/r.height*drag.c[3];
+    moved=Math.max(moved, Math.abs(e.clientX-drag.x)+Math.abs(e.clientY-drag.y));
+    // Capture the pointer only once a real drag has begun. Capturing it on pointerdown
+    // retargets the click to the <svg> itself, so every click landed on the frame instead of
+    // the unit under the cursor -- which is how selection died the moment panning was added.
+    if(!held && moved>4){ held=drag.id; svg.setPointerCapture(held); svg.classList.add('dragging'); }
+    cam[0]=drag.c[0]-dx; cam[1]=drag.c[1]-dy; apply(); });
+  const stop=e=>{ if(!drag) return; drag=null;
+    if(held){ try{ svg.releasePointerCapture(held); }catch(_){} held=0; }
+    svg.classList.remove('dragging'); };
+  svg.addEventListener('pointerup', stop); svg.addEventListener('pointercancel', stop);
+  svg.addEventListener('click', e=>{ if(moved>4){ e.stopPropagation(); } }, true);
+  function fit(box, pad){
+    if(!box||!box.width) return;
+    const m=(pad||0.12);
+    const w=box.width*(1+m*2), h=box.height*(1+m*2);
+    const ar=home[2]/home[3], bw=Math.max(w, h*ar), bh=bw/ar;
+    cam=[box.x+box.width/2-bw/2, box.y+box.height/2-bh/2, bw, bh]; clampScale(); apply();
+  }
+  host.__cam = {fit: fit, reset: ()=>{ cam=home.slice(); apply(); }};
+  const zc=document.createElement('div'); zc.className='zc';
+  zc.innerHTML='<button data-z="in" title="Zoom in">+</button>'
+             + '<button data-z="out" title="Zoom out">−</button>'
+             + (fitSelection?'<button class="wide" data-z="fit" title="Zoom to the selected unit">fit</button>':'')
+             + '<button class="wide" data-z="reset" title="Whole country">reset</button>';
+  zc.addEventListener('click', e=>{
+    const b=e.target.closest('button[data-z]'); if(!b) return;
+    const cx=cam[0]+cam[2]/2, cy=cam[1]+cam[3]/2;
+    if(b.dataset.z==='in') zoomBy(0.6, cx, cy);
+    else if(b.dataset.z==='out') zoomBy(1/0.6, cx, cy);
+    else if(b.dataset.z==='reset'){ cam=home.slice(); apply(); }
+    else if(b.dataset.z==='fit'){
+      const on=[...svg.querySelectorAll('path.head, path.on')];
+      if(!on.length) return;
+      let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+      on.forEach(p=>{ const bb=p.getBBox();
+        x0=Math.min(x0,bb.x); y0=Math.min(y0,bb.y);
+        x1=Math.max(x1,bb.x+bb.width); y1=Math.max(y1,bb.y+bb.height); });
+      fit({x:x0,y:y0,width:x1-x0,height:y1-y0});
+    }
+  });
+  host.appendChild(zc);
+}
+
+/* ---- register */
+let regDone=false;
+function drawRegister(){
+  if(regDone) return; regDone=true;
+  const lv=st.levels, live=Object.values(lv).reduce((a,b)=>a+b,0);
+  document.getElementById('tally').innerHTML=
+    [[fmt(live+st.retired+272),'codes, all resolving'],
+     [fmt(live),'live rows under 241 countries'],
+     [fmt(st.retired),'retired, never deleted'],
+     ['14','rules, all passing'],
+     [fmt(st.countries.filter(c=>!c.terr&&c.deep>=6).length),'countries at L6 or deeper']]
+    .map(([a,b])=>'<li><b>'+a+'</b><span>'+b+'</span></li>').join('');
+  const bars=(el,rows)=>{const m=Math.max(...rows.map(r=>r[1]));
+    document.getElementById(el).innerHTML=rows.map(([k,v])=>
+      '<div class="bar"><span>'+k+'</span><i style="width:'+Math.max(2,100*v/m)+'%"></i><span>'+fmt(v)+'</span></div>').join('');};
+  bars('levels', Object.keys(lv).sort().map(k=>['L'+k,lv[k]]));
+  const LN={ccby:'CC-BY',odbl:'ODbL',pd:'public',own:'own',none:'—'};
+  bars('lic', Object.entries(st.lic).sort((a,b)=>b[1]-a[1]).map(([k,v])=>[LN[k]||k,v]));
+  document.getElementById('top').innerHTML=st.countries.filter(c=>!c.terr)
+    .sort((a,b)=>b.rows-a.rows).slice(0,20)
+    .map(c=>'<tr><td>'+c.name+'</td><td class="n">'+fmt(c.rows)+'</td><td class="n">L'+c.deep
+      +'</td><td class="n">'+(c.real?'L'+c.real:'—')+'</td></tr>').join('');
+}
+
+/* ---- faults */
+let faultsDone=false;
+function drawFaults(){
+  if(faultsDone) return; faultsDone=true;
+  const F=D.faults, seenBy={};
+  function draw(key,target,opts){
+    const m=F[key]; if(!m||!document.getElementById(target)) return;
+    const [w,h]=m.size, seen=[];
+    let body=m.paths.map(p=>{
+      let c=opts.cls||'unit', style='';
+      if(opts.layer&&p.layer) c=p.layer==='province'?'prov':p.layer==='orphan'?'orphan':'ward';
+      if(opts.group&&p.group){
+        if(opts.group==='ns') c+= p.group==='NORTHERN'?' north':' south';
+        else { let i=seen.indexOf(p.group); if(i<0){seen.push(p.group); i=seen.length-1;}
+               style=' style="fill:hsl('+((i*47+192)%360)+' 34% 56%)"'; }
+      }
+      return '<path class="'+c+'"'+style+' d="'+p.d+'"><title>'+(p.name||'')+'</title></path>';
+    }).join('');
+    (opts.labels||[]).forEach(L=>{
+      const p=m.paths.find(x=>x.name===L.name); if(!p) return;
+      body+='<circle cx="'+p.cx+'" cy="'+p.cy+'" r="5" fill="var(--accent)"/>'
+          + '<text x="'+(p.cx+11)+'" y="'+(p.cy+7)+'" font-size="20" font-family="IBM Plex Mono, monospace" '
+          + 'stroke="var(--panel)" stroke-width="5" stroke-linejoin="round" paint-order="stroke" '
+          + 'fill="var(--ink)">'+L.text+'</text>';
+    });
+    document.getElementById(target).innerHTML='<svg viewBox="0 0 '+w+' '+h+'" role="img" aria-label="'+opts.alt+'">'+body+'</svg>';
+  }
+  draw('belarus','m-belarus',{group:'ns',alt:'Belarus oblasts by their register parent',
+    labels:[{name:'Gomel',text:'Gomel · southernmost'},{name:'Vitebsk',text:'Vitebsk · northernmost'}]});
+  draw('slovakia','m-slovakia',{group:1,alt:'The 79 okresy of Slovakia by kraj'});
+  draw('slovenia','m-slovenia',{group:1,alt:'The 212 municipalities of Slovenia by region'});
+  draw('solomon','m-solomon',{layer:true,alt:'Solomon Islands provinces and wards',
+    labels:[{name:'Luaniua',text:'Luaniua'},{name:'Sikaiana',text:'Sikaiana'}]});
+  draw('malta','m-malta',{group:1,alt:'Malta localities by district'});
+  draw('latvia','m-latvia',{group:1,alt:'Latvia pagasti by statistical region'});
+  draw('mkd','m-mkd',{group:1,alt:'North Macedonia municipalities by region'});
+  const t=document.getElementById('svn-diff');
+  if(t) t.innerHTML=D.svnDiff.map(p=>'<tr><td class="bad">'+p[0]+'</td><td class="good">'+p[1]+'</td></tr>').join('');
+}
+</script>
+
+<script src="lib/leaflet.js"></script>
+<script src="tiles.js"></script>
+
+</body>
+</html>

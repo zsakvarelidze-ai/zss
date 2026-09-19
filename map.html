@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZSS on OpenStreetMap</title>
+<link rel="stylesheet" href="lib/leaflet.css">
+<style>
+  :root{
+    --ink:#10151c; --panel:#161d27; --panel2:#1e2733; --line:#2b3644;
+    --text:#e6ecf3; --dim:#8fa0b4; --accent:#e8553f; --accent2:#4ea3d8;
+    --l4:#e8553f; --l5:#e8a33f; --l6:#4ea3d8; --l7:#7bc86c; --l8:#b07cd8; --l9:#f2f4f7;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--ink); color:var(--text);
+    font:13px/1.45 "Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex; overflow:hidden;
+  }
+  #side{
+    width:288px; flex:0 0 288px; background:var(--panel); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  #head{padding:14px 16px 12px; border-bottom:1px solid var(--line)}
+  #head h1{margin:0 0 3px; font-size:15px; font-weight:650; letter-spacing:.2px}
+  #head p{margin:0; font-size:11.5px; color:var(--dim)}
+  .sect{padding:12px 16px; border-bottom:1px solid var(--line)}
+  .sect h2{
+    margin:0 0 9px; font-size:10px; font-weight:650; letter-spacing:.11em;
+    text-transform:uppercase; color:var(--dim);
+  }
+  select,input[type=search]{
+    width:100%; padding:7px 9px; background:var(--panel2); color:var(--text);
+    border:1px solid var(--line); border-radius:5px; font:inherit; font-size:12.5px;
+  }
+  select:focus,input:focus{outline:2px solid var(--accent2); outline-offset:-1px}
+  .lv{display:flex; align-items:center; gap:8px; padding:4px 0; cursor:pointer; user-select:none}
+  .lv input{accent-color:var(--accent2); width:14px; height:14px; margin:0; cursor:pointer}
+  .sw{width:11px; height:11px; border-radius:2px; flex:0 0 11px}
+  .lv span.nm{flex:1; font-size:12.5px}
+  .lv span.ct{font-size:11px; color:var(--dim); font-variant-numeric:tabular-nums}
+  .lv.off span.nm,.lv.off span.ct{color:#5c6a7a}
+  #info{flex:1; overflow:auto; padding:12px 16px; min-height:0}
+  #info .empty{color:var(--dim); font-size:12px}
+  #crumb{font-size:11.5px; color:var(--dim); margin-bottom:8px; line-height:1.6}
+  #crumb b{color:var(--text); font-weight:600}
+  .kv{display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px solid var(--line)}
+  .kv dt{color:var(--dim); font-size:11.5px}
+  .kv dd{margin:0; font-size:12.5px; text-align:right}
+  code.code{
+    font:12px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--accent2);
+    background:var(--panel2); padding:1px 5px; border-radius:3px;
+  }
+  #foot{padding:10px 16px; border-top:1px solid var(--line); font-size:10.5px; color:#6c7b8d; line-height:1.55}
+  #foot a{color:#8fa0b4}
+  #map{flex:1; background:#0b0f14; min-width:0}
+  #load{
+    position:absolute; z-index:800; top:12px; left:50%; transform:translateX(-50%);
+    background:rgba(22,29,39,.94); border:1px solid var(--line); border-radius:6px;
+    padding:7px 14px; font-size:12px; display:none;
+  }
+  .leaflet-container{background:#0b0f14; font-family:inherit}
+  .leaflet-popup-content-wrapper{background:var(--panel); color:var(--text); border-radius:6px}
+  .leaflet-popup-tip{background:var(--panel)}
+  .leaflet-popup-content{margin:9px 12px; font-size:12.5px}
+  .leaflet-popup-content b{display:block; font-size:13.5px; margin-bottom:2px}
+  .leaflet-bar a{background:var(--panel); color:var(--text); border-bottom-color:var(--line)}
+  .leaflet-bar a:hover{background:var(--panel2)}
+  .leaflet-control-layers{background:var(--panel); color:var(--text); border:1px solid var(--line)}
+  .leaflet-control-attribution{background:rgba(22,29,39,.86)!important; color:#8fa0b4!important}
+  .leaflet-control-attribution a{color:#a8bacd!important}
+  @media (max-width:760px){
+    body{flex-direction:column}
+    #side{width:100%; flex:0 0 auto; max-height:47%; border-right:0; border-bottom:1px solid var(--line)}
+  }
+</style>
+</head>
+<body>
+
+<aside id="side">
+  <div id="head">
+    <h1>ZSS on OpenStreetMap</h1>
+    <p><a href="index.html" style="color:#8fa0b4">&larr; register, atlas and faults</a></p>
+  </div>
+
+  <div class="sect">
+    <h2>Country</h2>
+    <select id="pick"></select>
+  </div>
+
+  <div class="sect">
+    <h2>Levels</h2>
+    <div id="lvs"></div>
+  </div>
+
+  <div class="sect">
+    <h2>Find</h2>
+    <input type="search" id="q" placeholder="name or ZSS code" autocomplete="off">
+  </div>
+
+  <div id="info"><p class="empty">Click any unit on the map to read its code.</p></div>
+
+  <div id="foot">
+    Boundaries: <a href="https://www.geoboundaries.org" target="_blank" rel="noopener">geoBoundaries</a>
+    (CC&nbsp;BY&nbsp;4.0 / ODbL, per country).
+    Settlements: GeoNames, CC&nbsp;BY&nbsp;4.0.
+    Codes and names: ZSS register.
+    Basemaps credited bottom-right.
+  </div>
+</aside>
+
+<div id="map"></div>
+<div id="load">loading&hellip;</div>
+
+<!-- Leaflet 1.9.4, BSD-2-Clause, shipped with the folder so the page needs the network
+     only for map tiles, never for its own code. -->
+<script src="lib/leaflet.js"></script>
+<script>
+/* ------------------------------------------------------------------ *
+ * ZSS  —  the register on a slippy map.
+ *
+ * Data arrives as classic <script> files, not fetch(): a page opened
+ * from file:// is refused every fetch by CORS, but a plain script tag
+ * beside it still loads. Each country is one file, pulled on demand.
+ * ------------------------------------------------------------------ */
+var ZSS = (function () {
+  var IDX = null, DB = {}, pending = {};
+  return {
+    index: function (a) { IDX = a; boot(a); },
+    load:  function (d) { DB[d.code] = d; var f = pending[d.code]; delete pending[d.code]; if (f) f(d); },
+    get:   function (c) { return DB[c]; },
+    want:  function (c, file, cb) {
+      if (DB[c]) { cb(DB[c]); return; }
+      pending[c] = cb;
+      var s = document.createElement('script');
+      s.src = 'data/' + file;
+      s.onerror = function () { fail(file); };
+      document.head.appendChild(s);
+    }
+  };
+})();
+
+/* Rings arrive as delta integers in ten-thousandths of a degree: first point absolute, the
+   rest as steps. Same coordinates the file always carried, about a third of the bytes.
+   Leaflet wants [lat,lng], so the pair is swapped on the way out. */
+function ringPts(ring) {
+  if (typeof ring !== 'string') {                 // older data, still plain [[lon,lat],...]
+    var o = new Array(ring.length);
+    for (var k = 0; k < ring.length; k++) o[k] = [ring[k][1], ring[k][0]];
+    return o;
+  }
+  var v = ring.split(' '), x = +v[0], y = +v[1], out = [[y / 1e4, x / 1e4]];
+  for (var i = 2; i < v.length; i += 2) {
+    x += +v[i]; y += +v[i + 1];
+    out.push([y / 1e4, x / 1e4]);
+  }
+  return out;
+}
+
+var LCOL = {4:'#e8553f', 5:'#e8a33f', 6:'#4ea3d8', 7:'#7bc86c', 8:'#b07cd8', 9:'#f2f4f7'};
+var LNAME = {4:'L4', 5:'L5', 6:'L6', 7:'L7', 8:'L8', 9:'L9 settlements'};
+
+var map, layers = {}, on = {}, cur = null, hi = null;
+var renderer = L.canvas({padding: 0.4});
+
+/* ---------- basemaps ---------- */
+function basemaps() {
+  var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  });
+  var carto = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd', maxZoom: 20,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+  });
+  var light = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd', maxZoom: 20,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+  });
+  var topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    subdomains: 'abc', maxZoom: 17,
+    attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="https://viewfinderpanoramas.org">SRTM</a> | style: <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'
+  });
+  var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+  });
+  var labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd', maxZoom: 20, attribution: '&copy; CARTO'
+  });
+  return {
+    base: {
+      'OpenStreetMap': osm,
+      'Carto dark': carto,
+      'Carto light': light,
+      'OpenTopoMap': topo,
+      'Satellite (Esri)': sat
+    },
+    over: { 'Place labels': labels },
+    first: carto
+  };
+}
+
+/* ---------- boot ---------- */
+function boot(idx) {
+  var B = basemaps();
+  map = L.map('map', {
+    center: [46.1, 14.8], zoom: 5, layers: [B.first],
+    preferCanvas: true, zoomControl: true, worldCopyJump: true
+  });
+  L.control.layers(B.base, B.over, {position: 'topright', collapsed: false}).addTo(map);
+  L.control.scale({imperial: false, position: 'bottomleft'}).addTo(map);
+
+  var pick = document.getElementById('pick');
+  idx.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
+     .forEach(function (c) {
+       var o = document.createElement('option');
+       o.value = c.code;
+       o.textContent = c.name + '  ·  ' + c.iso;
+       o.dataset.file = c.file;
+       pick.appendChild(o);
+     });
+  pick.addEventListener('change', function () { open(this.value); });
+
+  document.getElementById('q').addEventListener('input', function () { find(this.value); });
+
+  var start = idx.filter(function (c) { return c.iso === 'SVN'; })[0] || idx[0];
+  pick.value = start.code;
+  open(start.code);
+}
+
+function fail(file) {
+  document.getElementById('load').style.display = 'none';
+  document.getElementById('info').innerHTML =
+    '<p class="empty"><b>' + file + '</b> did not load.<br><br>' +
+    'Keep <code>index.html</code>, <code>index.js</code> and the <code>data/</code> folder ' +
+    'together in one folder, and open <code>index.html</code> from there.</p>';
+}
+
+/* ---------- a country ---------- */
+function open(code) {
+  var opt = document.querySelector('#pick option[value="' + code + '"]');
+  document.getElementById('load').style.display = 'block';
+  ZSS.want(code, opt.dataset.file, function (d) {
+    document.getElementById('load').style.display = 'none';
+    draw(d);
+  });
+}
+
+function draw(d) {
+  Object.keys(layers).forEach(function (k) { map.removeLayer(layers[k]); });
+  layers = {}; hi = null; cur = d;
+
+  // polygons, one canvas layer per level
+  Object.keys(d.levels).forEach(function (key) {
+    var lv = +key, units = d.levels[key], shapes = [];
+    units.forEach(function (u) {
+      u.r.forEach(function (ring) {
+        var pts = ringPts(ring);
+        var p = L.polygon(pts, {
+          renderer: renderer,
+          color: LCOL[lv], weight: lv >= 7 ? 0.7 : (lv >= 6 ? 1 : 1.7),
+          opacity: 0.95, fill: true, fillColor: LCOL[lv],
+          fillOpacity: 0.06, interactive: true
+        });
+        p.zss = {c: u.c, n: u.n, lv: lv};
+        p.on('click', function (e) { select(this); L.DomEvent.stop(e); });
+        shapes.push(p);
+      });
+    });
+    layers[key] = L.layerGroup(shapes);
+  });
+
+  // settlements
+  if (d.pts && d.pts.length) {
+    var marks = d.pts.map(function (p) {
+      var m = L.circleMarker([p[2], p[3]], {
+        renderer: renderer, radius: 2.6, color: LCOL[9], weight: 0.9,
+        opacity: 0.9, fillColor: LCOL[9], fillOpacity: 0.55, interactive: true
+      });
+      m.zss = {c: p[0], n: p[1], lv: 9};
+      m.on('click', function (e) { select(this); L.DomEvent.stop(e); });
+      return m;
+    });
+    layers['9'] = L.layerGroup(marks);
+  }
+
+  // which levels start on: the deepest polygon level plus the one above it
+  var keys = Object.keys(layers).map(Number).sort(function (a, b) { return a - b; });
+  var polyKeys = keys.filter(function (k) { return k < 9; });
+  var deep = polyKeys[polyKeys.length - 1];
+  on = {};
+  keys.forEach(function (k) { on[k] = (k === deep || k === deep - 1); });
+
+  legend(d, keys);
+  paint();
+  map.fitBounds([[d.bbox[1], d.bbox[0]], [d.bbox[3], d.bbox[2]]], {padding: [18, 18]});
+  info(null);
+}
+
+function paint() {
+  Object.keys(layers).forEach(function (k) {
+    if (on[k]) { if (!map.hasLayer(layers[k])) layers[k].addTo(map); }
+    else { if (map.hasLayer(layers[k])) map.removeLayer(layers[k]); }
+  });
+}
+
+function legend(d, keys) {
+  var box = document.getElementById('lvs');
+  box.innerHTML = '';
+  keys.forEach(function (k) {
+    var n = k === 9 ? d.pts.length : d.levels[String(k)].length;
+    var row = document.createElement('label');
+    row.className = 'lv' + (on[k] ? '' : ' off');
+    row.innerHTML =
+      '<input type="checkbox"' + (on[k] ? ' checked' : '') + '>' +
+      '<span class="sw" style="background:' + LCOL[k] + '"></span>' +
+      '<span class="nm">' + LNAME[k] + '</span>' +
+      '<span class="ct">' + n.toLocaleString() + '</span>';
+    row.querySelector('input').addEventListener('change', function () {
+      on[k] = this.checked;
+      row.className = 'lv' + (this.checked ? '' : ' off');
+      paint();
+    });
+    box.appendChild(row);
+  });
+}
+
+/* ---------- selection ---------- */
+function select(shape) {
+  if (hi) hi.setStyle(hi.zss.lv === 9
+    ? {radius: 2.6, weight: 0.9, fillOpacity: 0.55}
+    : {weight: hi.zss.lv >= 7 ? 0.7 : (hi.zss.lv >= 6 ? 1 : 1.7), fillOpacity: 0.06});
+  hi = shape;
+  if (shape.zss.lv === 9) shape.setStyle({radius: 5.5, weight: 2, fillOpacity: 1});
+  else shape.setStyle({weight: 2.6, fillOpacity: 0.3});
+  if (shape.bringToFront) shape.bringToFront();
+  info(shape.zss);
+}
+
+/* every ancestor of a code is a prefix of it, so the chain needs no lookup table */
+function ancestors(code) {
+  var out = [], parts = code.split('.');
+  for (var i = 4; i < parts.length; i++) {
+    var p = parts.slice(0, i).join('.');
+    var lv = String(i);
+    var us = (cur.levels[lv] || []).filter(function (u) { return u.c === p; });
+    if (us.length) out.push({c: p, n: us[0].n, lv: i});
+  }
+  return out;
+}
+
+function info(z) {
+  var box = document.getElementById('info');
+  if (!z) {
+    box.innerHTML = '<p class="empty">Click any unit on the map to read its code.<br><br>' +
+      cur.name + ' is entered to ' + LNAME[cur.deepest] + ', from ' + cur.src + '.</p>';
+    return;
+  }
+  var chain = ancestors(z.c);
+  var crumb = [cur.name].concat(chain.map(function (a) { return a.n; }));
+  var h = '<div id="crumb">' + crumb.join(' &rsaquo; ') + ' &rsaquo; <b>' + (z.n || '&mdash;') + '</b></div>';
+  h += '<dl style="margin:0">';
+  h += '<div class="kv"><dt>Name</dt><dd>' + (z.n || '&mdash;') + '</dd></div>';
+  h += '<div class="kv"><dt>Code</dt><dd><code class="code">' + z.c + '</code></dd></div>';
+  h += '<div class="kv"><dt>Level</dt><dd>L' + z.lv + '</dd></div>';
+  h += '<div class="kv"><dt>Segments</dt><dd>' + z.c.split('.').length + '</dd></div>';
+  if (z.lv === 9 && z.c.indexOf('.0.') > 0) {
+    h += '<div class="kv"><dt>Tiers stepped over</dt><dd>' +
+         (z.c.split('.').filter(function (s) { return s === '0'; }).length) + '</dd></div>';
+  }
+  if (z.lv < 9) {
+    var kids = (cur.levels[String(z.lv + 1)] || [])
+      .filter(function (u) { return u.c.indexOf(z.c + '.') === 0; }).length;
+    if (kids) h += '<div class="kv"><dt>Children</dt><dd>' + kids.toLocaleString() + '</dd></div>';
+    var s = (cur.pts || []).filter(function (p) { return p[0].indexOf(z.c + '.') === 0; }).length;
+    if (s) h += '<div class="kv"><dt>Settlements</dt><dd>' + s.toLocaleString() + '</dd></div>';
+  }
+  h += '</dl>';
+  box.innerHTML = h;
+}
+
+/* ---------- find ---------- */
+function find(q) {
+  q = (q || '').trim().toLowerCase();
+  if (q.length < 2 || !cur) return;
+  var hit = null;
+  Object.keys(cur.levels).some(function (k) {
+    return cur.levels[k].some(function (u) {
+      if (u.c === q || (u.n || '').toLowerCase().indexOf(q) === 0) { hit = {lv: +k, u: u}; return true; }
+      return false;
+    });
+  });
+  if (hit) {
+    on[hit.lv] = true;
+    paint();
+    legend(cur, Object.keys(layers).map(Number).sort(function (a, b) { return a - b; }));
+    var target = null;
+    layers[String(hit.lv)].eachLayer(function (l) { if (l.zss && l.zss.c === hit.u.c && !target) target = l; });
+    if (target) { select(target); map.fitBounds(target.getBounds(), {padding: [40, 40]}); }
+    return;
+  }
+  var p = (cur.pts || []).filter(function (p) {
+    return p[0] === q || p[1].toLowerCase().indexOf(q) === 0;
+  })[0];
+  if (p) {
+    on[9] = true; paint();
+    map.setView([p[2], p[3]], 12);
+    var target = null;
+    if (layers['9']) layers['9'].eachLayer(function (l) { if (l.zss && l.zss.c === p[0] && !target) target = l; });
+    if (target) select(target);
+  }
+}
+</script>
+<script src="data/index.js"></script>
+</body>
+</html>
