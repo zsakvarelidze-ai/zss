@@ -18,17 +18,24 @@
   /* ---- data ---------------------------------------------------------------
      Country files are classic scripts, not fetch(): a page opened from file://
      is refused every fetch by CORS, while a script tag beside it still loads. */
-  var WORLD = null, CDB = {}, pending = {};
+  var WORLD = null, BR = {}, pending = {}, NAME = {};
   window.ZSSW = { load: function (d) { WORLD = d; boot(); } };
   window.ZSS = {
-    load: function (d) { CDB[d.code] = d; var f = pending[d.code]; delete pending[d.code]; if (f) f(d); }
+    // one file per parent: its children, and (at the deepest level) their settlements
+    branch: function (d) {
+      BR[d.code] = d;
+      d.units.forEach(function (u) { NAME[u.c] = u.n; });
+      var f = pending[d.code]; delete pending[d.code]; if (f) f(d);
+    },
+    load: function () {}                 // the old one-file-per-country shape; no longer read
   };
-  function wantCountry(code, cb) {
-    if (CDB[code]) { cb(CDB[code]); return; }
+  function wantBranch(code, cb) {
+    if (BR[code]) { cb(BR[code]); return; }
+    if (pending[code]) { var prev = pending[code]; pending[code] = function (d) { prev(d); cb(d); }; return; }
     pending[code] = cb;
     var s = document.createElement('script');
-    s.src = 'data/' + code.replace(/\./g, '_') + '.js';
-    s.onerror = function () { note('That country’s shapes did not load. Keep data/ beside index.html.'); };
+    s.src = 'data/b/' + code.replace(/\./g, '_') + '.js';
+    s.onerror = function () { delete pending[code]; note('The shapes inside ' + (NAME[code] || code) + ' did not load. Keep data/ beside index.html.'); };
     document.head.appendChild(s);
   }
 
@@ -44,7 +51,8 @@
     return out;
   }
 
-  var map, tiles, worldGrp, lvlGrp = {}, lvlOn = {}, curCode = null, curData = null;
+  var map, tiles, worldGrp, brGrp = null, outGrp = null, ptGrp = null;
+  var curCode = null, meta = null, curParent = null, curLevel = null;
   var rend = L.canvas({ padding: 0.3 });
 
   function note(t) { var n = document.getElementById('dnote'); if (n) n.textContent = t; }
@@ -91,8 +99,9 @@
     // the page's own descent, unchanged: only what it draws on is different
     window.paintWorld = paintTiles;
     window.fitGroup = fitTiles;
-    window.drawCountry = drawOnMap;
+    window.drawCountry = function (code) { pickCountry(code); };
     window.selectCountry = pickCountry;
+    window.drawBranch = openBranch;       // goto(code) for anything inside a country lands here
 
     var det = document.getElementById('detwrap');
     if (det) { det.hidden = true; det.innerHTML = ''; }
@@ -101,14 +110,35 @@
     if (lv) {
       var f2 = lv.cloneNode(true); lv.parentNode.replaceChild(f2, lv);
       f2.addEventListener('click', function (e) {
-        var b = e.target.closest('button[data-l]'); if (!b || !curData) return;
-        var L1 = Number(b.dataset.l);
-        lvlOn = {}; lvlOn[L1] = true;
-        showLevels(); markLevelButtons(); crumbWith(curData);
+        var b = e.target.closest('button[data-l]'); if (!b || !meta) return;
+        wholeLevel(Number(b.dataset.l));
       });
     }
     paintTiles();
   }
+
+  /* Leaflet's controls are styled for a white page. On the dark theme the page's own colours
+     bled into them -- dark text on a dark box -- so the control takes the page's tokens. */
+  (function () {
+    var css = document.createElement('style');
+    css.textContent =
+      '.leaflet-control-layers,.leaflet-bar a,.leaflet-control-attribution,.leaflet-control-scale-line{' +
+      'background:var(--panel,#fff);color:var(--ink,#111);border-color:var(--line,#ccc)}' +
+      '.leaflet-control-layers{padding:2px 4px;font:13px/1.7 "IBM Plex Sans",system-ui,sans-serif;box-shadow:0 1px 6px rgba(0,0,0,.35)}' +
+      '.leaflet-control-layers-expanded{padding:8px 12px 8px 8px}' +
+      '.leaflet-control-layers label{display:flex;align-items:center;gap:8px;color:var(--ink,#111);font-size:13px;cursor:pointer;margin:1px 0}' +
+      '.leaflet-control-layers label span{display:flex;align-items:center;gap:8px}' +
+      '.leaflet-control-layers input{width:auto;margin:0;accent-color:var(--accent,#2d7dd2)}' +
+      '.leaflet-control-layers-separator{border-top:1px solid var(--line,#ccc);margin:6px -8px 6px -6px}' +
+      '.leaflet-control-layers-toggle{filter:var(--lf-icon,none)}' +
+      '.leaflet-bar a{border-bottom-color:var(--line,#ccc)}.leaflet-bar a:hover{background:var(--soft,#eee)}' +
+      '.leaflet-container .leaflet-control-attribution,.leaflet-container .leaflet-control-scale-line{background:color-mix(in srgb,var(--panel,#fff) 85%,transparent);color:var(--muted,#555);font-size:10.5px}.leaflet-control-attribution a{color:var(--muted,#555)}' +
+      '.leaflet-tooltip{background:var(--panel,#fff);color:var(--ink,#111);border-color:var(--line,#ccc)}' +
+      '.leaflet-tooltip-top:before{border-top-color:var(--line,#ccc)}' +
+      '@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--lf-icon:invert(.85)}}' +
+      ':root[data-theme="dark"]{--lf-icon:invert(.85)}';
+    document.head.appendChild(css);
+  })();
 
   /* ---- world, continents, regions ---------------------------------------- */
   function paintTiles() {
@@ -189,7 +219,10 @@
     map.fitBounds(L.latLngBounds([y0, x0], [y1, x1]), { padding: [24, 24] });
   }
 
-  /* ---- one country, its own divisions ------------------------------------ */
+  /* ---- one country, one branch at a time ------------------------------------
+     A click answers with the children of the thing clicked: the country's regions, then that
+     region's states, then that state's counties, then the settlements in a county. Each answer
+     is one small file, fetched when asked for. Nothing above or beside the branch is loaded. */
   function pickCountry(code) {
     if (!code) return;
     if (!D.atlas[code]) {
@@ -201,127 +234,199 @@
         + 'separate run, and this country has not passed it.</p>';
       return;
     }
-    drawOnMap(code, null, false);
+    openBranch(code);
   }
 
-  function drawOnMap(code, level) {
-    wantCountry(code, function (d) {
-      curCode = code; curData = d;
-      worldGrp.clearLayers();
-      Object.keys(lvlGrp).forEach(function (k) { map.removeLayer(lvlGrp[k]); });
-      lvlGrp = {};
+  function countryOf(code) { return pre(code, 3); }
 
-      var keys = Object.keys(d.levels).map(Number).sort(function (a, b) { return a - b; });
-      var deep = keys[keys.length - 1];
-      var want = level && d.levels[String(level)] ? Number(level) : deep;
-      lvlOn = {}; lvlOn[want] = true;
+  function clearBranch() {
+    [brGrp, outGrp, ptGrp].forEach(function (g) { if (g && map.hasLayer(g)) map.removeLayer(g); });
+    brGrp = outGrp = ptGrp = null;
+  }
 
-      var op = (Number(document.getElementById('uop').value) || 100) / 100;
-      keys.forEach(function (Lv) {
-        var col = levelColor(Lv), shapes = [];
-        d.levels[String(Lv)].forEach(function (u) {
-          u.r.forEach(function (r) {
-            var p = L.polygon(ringPts(r), {
-              renderer: rend, color: col, weight: Lv >= 7 ? .6 : 1.1, opacity: .9,
-              fillColor: col, fillOpacity: .35 * op, interactive: true
-            });
-            p.zss = u;
-            p.on('click', function (e) { showUnit(this.zss, Lv); L.DomEvent.stop(e); });
-            p.bindTooltip(u.n + ' · ' + u.c, { sticky: true });
-            shapes.push(p);
-          });
-        });
-        lvlGrp[String(Lv)] = L.layerGroup(shapes);
-      });
-      if (d.pts && d.pts.length) {
-        lvlGrp['9'] = L.layerGroup(d.pts.map(function (q) {
-          var m = L.circleMarker([q[2], q[3]], {
-            renderer: rend, radius: 2.6, color: '#fff', weight: .9, opacity: .9,
-            fillColor: '#fff', fillOpacity: .6, interactive: true
-          });
-          m.zss = { c: q[0], n: q[1] };
-          m.on('click', function (e) { showUnit(this.zss, 9); L.DomEvent.stop(e); });
-          m.bindTooltip(q[1] + ' · ' + q[0], { sticky: true });
-          return m;
-        }));
-      }
-
-      document.getElementById('dtitle').textContent = (D.cname[d.iso] || d.iso) + ' — L' + want;
-      document.getElementById('detail').hidden = false;
-      var all = Object.keys(lvlGrp).map(Number).sort(function (a, b) { return a - b; });
-      document.getElementById('lvbtns').innerHTML = all.map(function (Lv) {
-        var n = Lv === 9 ? d.pts.length : d.levels[String(Lv)].length;
-        return '<button data-l="' + Lv + '">L' + Lv + ' · ' + fmt(n) + '</button>';
-      }).join('');
-      showLevels(); markLevelButtons(); crumbWith(d);
-      map.fitBounds(L.latLngBounds([d.bbox[1], d.bbox[0]], [d.bbox[3], d.bbox[2]]), { padding: [22, 22] });
-      note(fmt(d.levels[String(want)] ? d.levels[String(want)].length : d.pts.length)
-        + ' units at L' + want + ', drawn from ' + d.src
-        + '. Click one for its code; the level buttons switch depth; the layers control, top '
-        + 'right, switches the imagery underneath.');
-      wcrumb();
+  function openBranch(parent, keepView) {
+    var country = countryOf(parent);
+    if (!D.atlas[country]) { pickCountry(country); return; }
+    var need = [country];                       // the country file carries the metadata
+    if (parent !== country) need.push(parent);
+    var got = 0;
+    need.forEach(function (c) {
+      wantBranch(c, function () { if (++got === need.length) showBranch(parent, keepView); });
     });
   }
 
-  function crumbWith(d) {
-    var el = document.getElementById('wcrumb');
+  function showBranch(parent, keepView) {
+    var country = countryOf(parent), top = BR[country], d = BR[parent];
+    if (!top || !d) return;
+    meta = top.meta; curCode = country; curParent = parent; curLevel = d.level;
+    // a country opened by code (search, a link, the register) still sits inside its region
+    if (nav.length < 2 || nav[1] !== pre(country, 2)) nav = [pre(country, 1), pre(country, 2)];
+    worldGrp.clearLayers();
+    clearBranch();
+
+    var op = (Number(document.getElementById('uop').value) || 100) / 100;
+    var col = levelColor(d.level), deep = d.level >= meta.deepest, shapes = [], boxes = [];
+    d.units.forEach(function (u) {
+      u.r.forEach(function (r) {
+        var p = L.polygon(ringPts(r), {
+          renderer: rend, color: col, weight: d.level >= 7 ? .7 : 1.1, opacity: .95,
+          fillColor: col, fillOpacity: .38 * op, interactive: true
+        });
+        p.zss = u;
+        p.on('click', function (e) {
+          L.DomEvent.stop(e);
+          if (deep) { showUnit(this.zss, d.level, d); markUnit(this); }
+          else openBranch(this.zss.c);
+        });
+        p.bindTooltip(u.n + ' · ' + u.c, { sticky: true });
+        shapes.push(p);
+      });
+      if (u.b && (u.b[2] - u.b[0]) < 90) boxes.push(u.b);
+    });
+    brGrp = L.layerGroup(shapes).addTo(map);
+
+    // the parent's own outline, so the children read as pieces of something
+    if (parent !== country) {
+      var up = BR[parent.slice(0, parent.lastIndexOf('.'))];
+      var me = up && up.units.filter(function (u) { return u.c === parent; })[0];
+      if (me) {
+        outGrp = L.layerGroup(me.r.map(function (r) {
+          return L.polygon(ringPts(r), { renderer: rend, color: levelColor(d.level - 1), weight: 2.2,
+            opacity: .8, fill: false, interactive: false, dashArray: '4 4' });
+        })).addTo(map);
+      }
+    }
+
+    // settlements, only at the deepest level, only the ones inside this parent
+    if (deep && d.pts && d.pts.length) {
+      ptGrp = L.layerGroup(d.pts.map(function (q) {
+        var m = L.circleMarker([q[2], q[3]], {
+          renderer: rend, radius: 2.2, color: '#fff', weight: .8, opacity: .9,
+          fillColor: levelColor(9), fillOpacity: .65, interactive: true
+        });
+        m.zss = { c: q[0], n: q[1] };
+        m.on('click', function (e) { showUnit(this.zss, 9, d); L.DomEvent.stop(e); });
+        m.bindTooltip(q[1] + ' · ' + q[0], { sticky: true });
+        return m;
+      })).addTo(map);
+    }
+
+    // frame the children (not an antimeridian-crossing outlier among them)
+    if (!keepView) {
+      var bb = boxes.length ? boxes : [meta.bbox];
+      var x0 = Math.min.apply(null, bb.map(function (b) { return b[0]; })), y0 = Math.min.apply(null, bb.map(function (b) { return b[1]; }));
+      var x1 = Math.max.apply(null, bb.map(function (b) { return b[2]; })), y1 = Math.max.apply(null, bb.map(function (b) { return b[3]; }));
+      map.fitBounds(L.latLngBounds([y0, x0], [y1, x1]), { padding: [22, 22] });
+    }
+
+    var here = parent === country ? (D.cname[meta.iso] || meta.name) : (NAME[parent] || parent);
+    document.getElementById('dtitle').textContent = (D.cname[meta.iso] || meta.name) + ' — L' + d.level;
+    document.getElementById('detail').hidden = false;
+    document.getElementById('lvbtns').innerHTML = Object.keys(meta.counts).map(Number).sort(function (a, b) { return a - b; })
+      .map(function (Lv) {
+        return '<button data-l="' + Lv + '" aria-pressed="' + (Lv === d.level && parent === country) + '" title="every unit at this level, the whole country">L'
+          + Lv + ' · ' + fmt(meta.counts[String(Lv)]) + '</button>';
+      }).join('') + (meta.pts ? '<span class="hint" style="margin-left:8px">L9 · ' + fmt(meta.pts) + ' settlements, shown inside the deepest units</span>' : '');
+    crumbBranch(parent);
+    note(fmt(d.units.length) + ' units at L' + d.level + ' inside ' + here
+      + (deep ? (d.pts && d.pts.length ? ', with ' + fmt(d.pts.length) + ' settlements. This is as deep as this country goes; click a unit for its code.'
+                                         : '. This is as deep as this country goes; click a unit for its code.')
+              : '. Click one to open what is inside it; the buttons below show a whole level at once.'));
+    var box = document.getElementById('selbox'); if (box) box.innerHTML = '';
+  }
+
+  var marked = null;
+  function markUnit(p) {
+    if (marked) marked.setStyle({ weight: marked.zss && curLevel >= 7 ? .7 : 1.1, color: levelColor(curLevel) });
+    marked = p; p.setStyle({ weight: 2.6, color: '#fff' }); p.bringToFront();
+  }
+
+  /* the whole of one level, for whoever wants the old view: every file down to that level */
+  function wholeLevel(Lv) {
+    if (!meta) return;
+    var country = curCode, todo = [country], units = [], loading = 0;
+    note('Loading every unit at L' + Lv + ' …');
+    function step() {
+      if (!todo.length) { if (!loading) done(); return; }
+      var c = todo.shift(); loading++;
+      wantBranch(c, function (d) {
+        loading--;
+        if (d.level === Lv) units = units.concat(d.units);
+        else if (d.level < Lv) d.units.forEach(function (u) { todo.push(u.c); });
+        while (todo.length && loading < 6) step();
+        if (!todo.length && !loading) done();
+      });
+    }
+    function done() {
+      worldGrp.clearLayers(); clearBranch();
+      var op = (Number(document.getElementById('uop').value) || 100) / 100, col = levelColor(Lv);
+      brGrp = L.layerGroup(units.reduce(function (acc, u) {
+        u.r.forEach(function (r) {
+          var p = L.polygon(ringPts(r), { renderer: rend, color: col, weight: Lv >= 7 ? .6 : 1, opacity: .9,
+            fillColor: col, fillOpacity: .35 * op, interactive: true });
+          p.zss = u;
+          p.on('click', function (e) { L.DomEvent.stop(e); if (Lv < meta.deepest) openBranch(this.zss.c); else { showUnit(this.zss, Lv, null); markUnit(this); } });
+          p.bindTooltip(u.n + ' · ' + u.c, { sticky: true });
+          acc.push(p);
+        });
+        return acc;
+      }, [])).addTo(map);
+      curParent = country; curLevel = Lv;
+      map.fitBounds(L.latLngBounds([meta.bbox[1], meta.bbox[0]], [meta.bbox[3], meta.bbox[2]]), { padding: [22, 22] });
+      document.getElementById('dtitle').textContent = (D.cname[meta.iso] || meta.name) + ' — L' + Lv;
+      [].forEach.call(document.querySelectorAll('#lvbtns button[data-l]'), function (b) { b.setAttribute('aria-pressed', Number(b.dataset.l) === Lv); });
+      crumbBranch(country);
+      note(fmt(units.length) + ' units at L' + Lv + ', the whole of ' + (D.cname[meta.iso] || meta.name) + '. Click one to open what is inside it.');
+    }
+    step();
+  }
+
+  /* World › continent › region › Country › region › state -- every step is a link back up */
+  function crumbBranch(parent) {
+    var el = document.getElementById('wcrumb'), country = countryOf(parent);
     var parts = ['<a data-nav="">World</a>'];
     nav.forEach(function (c) { parts.push('<a data-nav="' + c + '">' + TREE[c].n + '</a>'); });
-    if (d) parts.push('<b>' + (D.cname[d.iso] || d.iso) + '</b>');
-    el.innerHTML = parts.join('<span class="sep">\u203a</span>');
-    var k = document.getElementById('wkey');
-    if (d) {
-      k.innerHTML = Object.keys(lvlGrp).map(Number).sort(function (a, b) { return a - b; })
-        .map(function (Lv) {
-          return '<span><i style="background:' + levelColor(Lv) + '"></i>L' + Lv
-            + (Lv === 9 ? ' \u2014 settlements' : '') + '</span>';
-        }).join('') + '<span class="hint">one level at a time \u2014 use the buttons below</span>';
+    var segs = parent.split('.');
+    for (var n = 3; n <= segs.length; n++) {
+      var c = segs.slice(0, n).join('.');
+      var label = n === 3 ? (D.cname[meta.iso] || meta.name) : (NAME[c] || c);
+      parts.push(n === segs.length ? '<b>' + label + '</b>' : '<a data-nav="' + c + '">' + label + '</a>');
     }
+    el.innerHTML = parts.join('<span class="sep">›</span>');
+    var k = document.getElementById('wkey');
+    var Ls = Object.keys(meta.counts).map(Number).sort(function (a, b) { return a - b; });
+    if (meta.pts) Ls.push(9);
+    k.innerHTML = Ls.map(function (Lv) {
+      return '<span' + (Lv === curLevel ? ' style="font-weight:600"' : '') + '><i style="background:' + levelColor(Lv) + '"></i>L' + Lv
+        + (Lv === 9 ? ' — settlements' : '') + '</span>';
+    }).join('') + '<span class="hint">one branch at a time — click a unit to open it, the crumb to go back up</span>';
   }
 
   function levelColor(Lv) {
     var v = getComputedStyle(document.documentElement).getPropertyValue('--d' + Math.min(Lv, 9));
     return (v || '').trim() || '#4ea3d8';
   }
-  function showLevels() {
-    Object.keys(lvlGrp).forEach(function (k) {
-      if (lvlOn[k]) { if (!map.hasLayer(lvlGrp[k])) lvlGrp[k].addTo(map); }
-      else if (map.hasLayer(lvlGrp[k])) map.removeLayer(lvlGrp[k]);
-    });
-  }
-  function markLevelButtons() {
-    [].forEach.call(document.querySelectorAll('#lvbtns button[data-l]'), function (b) {
-      b.setAttribute('aria-pressed', !!lvlOn[b.dataset.l]);
-    });
-    if (curData) {
-      var on = Object.keys(lvlOn).filter(function (k) { return lvlOn[k]; })[0];
-      if (on) document.getElementById('dtitle').textContent =
-        (D.cname[curData.iso] || curData.iso) + ' — L' + on;
-    }
-  }
 
-  function showUnit(u, Lv) {
+  function showUnit(u, Lv, d) {
     var box = document.getElementById('selbox');
-    var kids = 0, setts = 0;
-    if (curData) {
-      var nx = curData.levels[String(Lv + 1)];
-      if (nx) kids = nx.filter(function (q) { return q.c.indexOf(u.c + '.') === 0; }).length;
-      setts = (curData.pts || []).filter(function (q) { return q[0].indexOf(u.c + '.') === 0; }).length;
-    }
+    var setts = 0;
+    if (d && d.pts && Lv < 9) setts = d.pts.filter(function (q) { return q[0].indexOf(u.c + '.') === 0; }).length;
     box.innerHTML = '<div class="selbox"><h4>' + (u.n || '—') + '</h4>'
       + '<div class="c">' + u.c + '</div><p>L' + Lv + ', ' + u.c.split('.').length + ' segments'
-      + (kids ? ' · ' + fmt(kids) + ' inside it' : '')
       + (setts ? ' · ' + fmt(setts) + ' settlements' : '') + '</p></div>';
   }
 
   /* leaving a country goes back to the region it sits in */
   var crumb = document.getElementById('wcrumb');
-  crumb.addEventListener('click', function () { curCode = null; curData = null;
-    Object.keys(lvlGrp).forEach(function (k) { map.removeLayer(lvlGrp[k]); }); lvlGrp = {};
+  crumb.addEventListener('click', function (e) {
+    var a = e.target.closest('a[data-nav]'); if (!a) return;
+    if (a.dataset.nav.split('.').length >= 3) return;   // a step inside the country: goto() opens that branch
+    curCode = null; meta = null; curParent = null; curLevel = null; marked = null;
+    clearBranch();
     document.getElementById('detail').hidden = true; }, true);
 
   document.getElementById('uop').addEventListener('input', function () {
-    if (curCode) drawOnMap(curCode, Object.keys(lvlOn).filter(function (k) { return lvlOn[k]; })[0]);
+    if (curParent) openBranch(curParent, true);
     else paintTiles();
   });
 
