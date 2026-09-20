@@ -51,6 +51,23 @@
     return out;
   }
 
+  /* The antimeridian. A shape that straddles 180 degrees -- Russia, the Aleutians, Fiji -- has
+     points on both sides of the line, and drawn as-is its far end lands at the opposite edge of
+     the map. If a set of rings spans more than half the world, the far-side points are moved
+     by 360 so the shape draws in one piece, just past the right edge; Leaflet is happy to draw
+     at longitude 190. Bounds for framing come from the shifted points. */
+  function unwrap(ringsLL) {
+    var lo = 999, hi = -999;
+    ringsLL.forEach(function (r) { r.forEach(function (q) { if (q[1] < lo) lo = q[1]; if (q[1] > hi) hi = q[1]; }); });
+    if (hi - lo < 180) return ringsLL;
+    return ringsLL.map(function (r) { return r.map(function (q) { return q[1] < 0 ? [q[0], q[1] + 360] : q; }); });
+  }
+  function boundsOf(ringsLL) {
+    var b = null;
+    ringsLL.forEach(function (r) { r.forEach(function (q) { b = b ? b.extend(q) : L.latLngBounds(q, q); }); });
+    return b;
+  }
+
   var map, tiles, worldGrp, brGrp = null, outGrp = null, ptGrp = null;
   var curCode = null, meta = null, curParent = null, curLevel = null;
   var rend = L.canvas({ padding: 0.3 });
@@ -156,8 +173,8 @@
     Object.keys(WORLD).forEach(function (code) {
       var inside = within(code, parent);
       var fill = (inside && col[pre(code, d)]) || '#8a97a3';
-      WORLD[code].r.forEach(function (r) {
-        var p = L.polygon(ringPts(r), {
+      unwrap(WORLD[code].r.map(ringPts)).forEach(function (pts) {
+        var p = L.polygon(pts, {
           renderer: rend, color: fill, weight: 1, opacity: inside ? .95 : .35,
           fillColor: fill, fillOpacity: inside ? .55 * op : .12, interactive: true
         });
@@ -265,12 +282,21 @@
     clearBranch();
 
     var op = (Number(document.getElementById('uop').value) || 100) / 100;
-    var col = levelColor(d.level), deep = d.level >= meta.deepest, shapes = [], boxes = [];
-    d.units.forEach(function (u) {
-      u.r.forEach(function (r) {
-        var p = L.polygon(ringPts(r), {
-          renderer: rend, color: col, weight: d.level >= 7 ? .7 : 1.1, opacity: .95,
-          fillColor: col, fillOpacity: .38 * op, interactive: true
+    var col = levelColor(d.level), deep = d.level >= meta.deepest, shapes = [];
+    // Siblings are told apart the way continents and regions are on the world view: one hue
+    // each, from the same wheel. The level colour keeps the outline, so the legend still holds.
+    // Past two dozen siblings the wheel stops separating and the level colour takes over.
+    var many = d.units.length > 24;
+    var frame = null;
+    d.units.forEach(function (u, i) {
+      var fill = many ? col : catColor(i, d.units.length);
+      var rr = unwrap(u.r.map(ringPts));
+      var ub = boundsOf(rr);
+      if (ub && (ub.getEast() - ub.getWest()) < 90) frame = frame ? frame.extend(ub) : ub;
+      rr.forEach(function (pts) {
+        var p = L.polygon(pts, {
+          renderer: rend, color: many ? col : 'rgba(255,255,255,.55)', weight: d.level >= 7 ? .7 : 1.1, opacity: .95,
+          fillColor: fill, fillOpacity: (many ? .38 : .5) * op, interactive: true
         });
         p.zss = u;
         p.on('click', function (e) {
@@ -281,7 +307,6 @@
         p.bindTooltip(u.n + ' · ' + u.c, { sticky: true });
         shapes.push(p);
       });
-      if (u.b && (u.b[2] - u.b[0]) < 90) boxes.push(u.b);
     });
     brGrp = L.layerGroup(shapes).addTo(map);
 
@@ -290,8 +315,8 @@
       var up = BR[parent.slice(0, parent.lastIndexOf('.'))];
       var me = up && up.units.filter(function (u) { return u.c === parent; })[0];
       if (me) {
-        outGrp = L.layerGroup(me.r.map(function (r) {
-          return L.polygon(ringPts(r), { renderer: rend, color: levelColor(d.level - 1), weight: 2.2,
+        outGrp = L.layerGroup(unwrap(me.r.map(ringPts)).map(function (pts) {
+          return L.polygon(pts, { renderer: rend, color: levelColor(d.level - 1), weight: 2.2,
             opacity: .8, fill: false, interactive: false, dashArray: '4 4' });
         })).addTo(map);
       }
@@ -313,10 +338,7 @@
 
     // frame the children (not an antimeridian-crossing outlier among them)
     if (!keepView) {
-      var bb = boxes.length ? boxes : [meta.bbox];
-      var x0 = Math.min.apply(null, bb.map(function (b) { return b[0]; })), y0 = Math.min.apply(null, bb.map(function (b) { return b[1]; }));
-      var x1 = Math.max.apply(null, bb.map(function (b) { return b[2]; })), y1 = Math.max.apply(null, bb.map(function (b) { return b[3]; }));
-      map.fitBounds(L.latLngBounds([y0, x0], [y1, x1]), { padding: [22, 22] });
+      map.fitBounds(frame || L.latLngBounds([meta.bbox[1], meta.bbox[0]], [meta.bbox[3], meta.bbox[2]]), { padding: [22, 22] });
     }
 
     var here = parent === country ? (D.cname[meta.iso] || meta.name) : (NAME[parent] || parent);
@@ -337,8 +359,9 @@
 
   var marked = null;
   function markUnit(p) {
-    if (marked) marked.setStyle({ weight: marked.zss && curLevel >= 7 ? .7 : 1.1, color: levelColor(curLevel) });
-    marked = p; p.setStyle({ weight: 2.6, color: '#fff' }); p.bringToFront();
+    if (marked && marked._zssStyle) marked.setStyle(marked._zssStyle);
+    marked = p; p._zssStyle = { weight: p.options.weight, color: p.options.color };
+    p.setStyle({ weight: 2.8, color: '#fff' }); p.bringToFront();
   }
 
   /* the whole of one level, for whoever wants the old view: every file down to that level */
@@ -361,8 +384,8 @@
       worldGrp.clearLayers(); clearBranch();
       var op = (Number(document.getElementById('uop').value) || 100) / 100, col = levelColor(Lv);
       brGrp = L.layerGroup(units.reduce(function (acc, u) {
-        u.r.forEach(function (r) {
-          var p = L.polygon(ringPts(r), { renderer: rend, color: col, weight: Lv >= 7 ? .6 : 1, opacity: .9,
+        unwrap(u.r.map(ringPts)).forEach(function (pts) {
+          var p = L.polygon(pts, { renderer: rend, color: col, weight: Lv >= 7 ? .6 : 1, opacity: .9,
             fillColor: col, fillOpacity: .35 * op, interactive: true });
           p.zss = u;
           p.on('click', function (e) { L.DomEvent.stop(e); if (Lv < meta.deepest) openBranch(this.zss.c); else { showUnit(this.zss, Lv, null); markUnit(this); } });
