@@ -19,6 +19,13 @@
      Country files are classic scripts, not fetch(): a page opened from file://
      is refused every fetch by CORS, while a script tag beside it still loads. */
   var WORLD = null, BR = {}, pending = {}, NAME = {};
+  // Two pages share this file. The world page stops at L3 (decision 1, 20 Sep 2026): a click
+  // on a country leaves for that country's own page, which is the same page with ?c=<code>,
+  // and carries the descent into the country's tiers. Nothing inside a country is drawn on
+  // the world map.
+  var PAGE = window.ZSS_PAGE || 'world';
+  var QS = {}; location.search.replace(/^\?/, '').split('&').forEach(function (kv) {
+    var i = kv.indexOf('='); if (i > 0) QS[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1)); });
   window.ZSSW = { load: function (d) { WORLD = d; boot(); } };
   window.ZSS = {
     // one file per parent: its children, and (at the deepest level) their settlements
@@ -57,9 +64,15 @@
      by 360 so the shape draws in one piece, just past the right edge; Leaflet is happy to draw
      at longitude 190. Bounds for framing come from the shifted points. */
   function unwrap(ringsLL) {
-    var lo = 999, hi = -999;
-    ringsLL.forEach(function (r) { r.forEach(function (q) { if (q[1] < lo) lo = q[1]; if (q[1] > hi) hi = q[1]; }); });
+    var lo = 999, hi = -999, neg = 0, pos = 0;
+    ringsLL.forEach(function (r) { r.forEach(function (q) {
+      if (q[1] < lo) lo = q[1]; if (q[1] > hi) hi = q[1]; if (q[1] < 0) neg++; else pos++; }); });
     if (hi - lo < 180) return ringsLL;
+    // Move the MINORITY side across, never a fixed one. Russia is mostly east of Greenwich and
+    // Chukotka's few western-hemisphere points come over to +190. The United States is mostly
+    // west, and only the outer Aleutians sit past 180: those go to -190. Shifting the negative
+    // side regardless drew all of America at longitude 260 -- a US-shaped hole on the world map.
+    if (neg > pos) return ringsLL.map(function (r) { return r.map(function (q) { return q[1] > 0 ? [q[0], q[1] - 360] : q; }); });
     return ringsLL.map(function (r) { return r.map(function (q) { return q[1] < 0 ? [q[0], q[1] + 360] : q; }); });
   }
   function boundsOf(ringsLL) {
@@ -107,7 +120,7 @@
     tiles = dark ? base['Dark'] : base['Light'];
 
     map = L.map(fresh, { center: [22, 12], zoom: 2, layers: [tiles], preferCanvas: true, worldCopyJump: true });
-    L.control.layers(base, { 'Place labels': labels }, { position: 'topright', collapsed: true }).addTo(map);
+    L.control.layers(base, { 'Esri labels & boundaries': labels }, { position: 'topright', collapsed: true }).addTo(map);
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
 
     worldGrp = L.layerGroup().addTo(map);
@@ -131,7 +144,9 @@
         wholeLevel(Number(b.dataset.l));
       });
     }
-    paintTiles();
+    if (PAGE === 'country' && QS.c) openCountryPage(QS.c);
+    else { if (QS.at && TREE[QS.at]) { var n = QS.at.split('.').length; nav = n === 2 ? [pre(QS.at, 1), QS.at] : [pre(QS.at, 1)]; }
+           paintTiles(); if (QS.at) fitTiles(QS.at); }
   }
 
   /* Leaflet's controls are styled for a white page. On the dark theme the page's own colours
@@ -170,22 +185,29 @@
     // world.js is keyed by the register's own code now, not by ISO: the polygons were placed
     // under the row that claims that ground, so Greenland arrives as 5.3.4 DENMARK TERRITORIES
     // under Northern America rather than as Danish ground filed in Europe.
+    // Territory members (k:'t') are the ground a set like DENMARK TERRITORIES actually is --
+    // Greenland, not a blob called Denmark -- drawn in the set's colour with a dashed edge and
+    // the holder named, so a reader sees the place and still sees whose it is (decision, 20 Sep).
     Object.keys(WORLD).forEach(function (code) {
-      var inside = within(code, parent);
+      var w = WORLD[code], inside = within(code, parent), terr = w.k === 't';
       var fill = (inside && col[pre(code, d)]) || '#8a97a3';
-      unwrap(WORLD[code].r.map(ringPts)).forEach(function (pts) {
+      var label = wname(code) + ' \u00b7 ' + code + (terr && w.h ? ' \u00b7 held by ' + w.h : '') + (w.st ? ' \u00b7 ' + w.st : '');
+      unwrap(w.r.map(ringPts)).forEach(function (pts) {
         var p = L.polygon(pts, {
-          renderer: rend, color: fill, weight: 1, opacity: inside ? .95 : .35,
-          fillColor: fill, fillOpacity: inside ? .55 * op : .12, interactive: true
+          renderer: rend, color: fill, weight: terr ? 1.4 : 1, opacity: inside ? .95 : .35,
+          dashArray: terr ? '5 4' : null,
+          fillColor: fill, fillOpacity: (inside ? (terr ? .38 : .55) : .12) * (inside ? op : 1), interactive: true
         });
         p.zss = { code: code };
         p.on('click', function (e) { descend(this.zss); L.DomEvent.stop(e); });
-        p.bindTooltip((TREE[code] ? TREE[code].n : code) + ' \u00b7 ' + code, { sticky: true });
+        p.bindTooltip(label, { sticky: true });
         worldGrp.addLayer(p);
       });
     });
     wlegend(gs, col); wcrumb();
   }
+
+  function wname(code) { return (WORLD[code] && WORLD[code].n) || (TREE[code] ? TREE[code].n : code); }
 
   function descend(z) {
     if (!z.code) return;
@@ -193,7 +215,46 @@
     if (pre(z.code, 1) !== nav[0]) { goto(pre(z.code, 1)); return; }
     if (nav.length === 1) { goto(pre(z.code, 2)); return; }
     if (pre(z.code, 2) !== nav[1]) { goto(pre(z.code, 2)); return; }
+    // the third click leaves the world map: a country is its own page
+    if (PAGE !== 'country') { location.href = 'country.html?c=' + encodeURIComponent(z.code); return; }
     pickCountry(z.code);
+  }
+
+  /* ---- the country page ------------------------------------------------------
+     Opened at ?c=<code>. A country with joined tiers gets the branch descent; a row with only
+     its outline (a territory member, or one of the countries whose join has not run) gets that
+     outline, its source, and a plain statement of what is not there yet. */
+  function openCountryPage(code) {
+    var w = WORLD[code], country = pre(code, 3);
+    if (D.atlas[country] && code === country) { openBranch(code); return; }
+    if (!w) { note('No row ' + code + ' on the world map.'); return; }
+    nav = [pre(code, 1), pre(code, 2)];
+    worldGrp.clearLayers(); clearBranch();
+    var col = w.k === 't' ? levelColor(4) : levelColor(3);
+    var rr = unwrap(w.r.map(ringPts)), frame = null;
+    rr.forEach(function (pts) {
+      var ub = boundsOf([pts]);
+      if (ub && (ub.getEast() - ub.getWest()) < 90) frame = frame ? frame.extend(ub) : ub;
+    });
+    outGrp = L.layerGroup(rr.map(function (pts) {
+      return L.polygon(pts, { renderer: rend, color: col, weight: 2, opacity: .9, fillColor: col, fillOpacity: .25,
+        dashArray: w.k === 't' ? '6 4' : null, interactive: false });
+    })).addTo(map);
+    if (frame) map.fitBounds(frame, { padding: [24, 24] });
+    document.getElementById('dtitle').textContent = w.n;
+    document.getElementById('detail').hidden = false;
+    document.getElementById('lvbtns').innerHTML = '';
+    var el = document.getElementById('wcrumb'), parts = ['<a data-nav="">World</a>'];
+    nav.forEach(function (c) { parts.push('<a data-nav="' + c + '">' + TREE[c].n + '</a>'); });
+    if (w.p) parts.push('<a data-nav="' + w.p + '">' + (TREE[w.p] ? TREE[w.p].n : w.p) + '</a>');
+    parts.push('<b>' + w.n + '</b>');
+    el.innerHTML = parts.join('<span class="sep">\u203a</span>');
+    document.getElementById('wkey').innerHTML = '<span><i style="background:' + col + '"></i>' + (w.k === 't' ? 'territory' : 'country') + ' outline</span>'
+      + '<span class="hint">' + w.src + '</span>';
+    note((w.k === 't' ? (w.h ? 'Held by ' + w.h + '. ' : '') : '')
+      + 'The register holds this row' + (w.k === 't' ? ' under ' + (TREE[w.p] ? TREE[w.p].n : w.p) : '')
+      + '; its outline here comes from ' + w.src + '. No deeper tiers are joined to polygons yet' + (w.st ? ' (status: ' + w.st + ')' : '') + '.');
+    var box = document.getElementById('selbox'); if (box) box.innerHTML = '<div class="selbox"><h4>' + w.n + '</h4><div class="c">' + code + '</div></div>';
   }
 
   function fitTiles(code) {
@@ -211,7 +272,7 @@
         // Russia's polygon crosses the antimeridian, so its box runs the full 360 degrees and
         // its landmass is 160 wide regardless. A ring that big is not a place a camera can
         // frame, so it is left out of the framing -- it is still drawn, just not aimed at.
-        if (w > 90 || h > 60) return;
+        if (w > 150 || h > 60) return;    // 150, not 90: Asiatic Russia alone is 130 degrees wide and is a place
         parts.push({ x0: q[0], y0: q[1], x1: q[2], y1: q[3], w: Math.max(w * h, 1e-4) });
       });
     });
@@ -310,7 +371,13 @@
     });
     brGrp = L.layerGroup(shapes).addTo(map);
 
-    // the parent's own outline, so the children read as pieces of something
+    // the parent's own outline, so the children read as pieces of something. At the top of the
+    // country it is the world layer's outline -- the same union the world map draws.
+    if (parent === country && WORLD && WORLD[country]) {
+      outGrp = L.layerGroup(unwrap(WORLD[country].r.map(ringPts)).map(function (pts) {
+        return L.polygon(pts, { renderer: rend, color: levelColor(3), weight: 2, opacity: .7, fill: false, interactive: false, dashArray: '4 4' });
+      })).addTo(map);
+    }
     if (parent !== country) {
       var up = BR[parent.slice(0, parent.lastIndexOf('.'))];
       var me = up && up.units.filter(function (u) { return u.c === parent; })[0];
@@ -443,6 +510,11 @@
   var crumb = document.getElementById('wcrumb');
   crumb.addEventListener('click', function (e) {
     var a = e.target.closest('a[data-nav]'); if (!a) return;
+    if (PAGE === 'country' && a.dataset.nav.split('.').length < 3 || (PAGE === 'country' && !a.dataset.nav)) {
+      // World, a continent or a region: that is the world page's business
+      e.stopPropagation(); e.preventDefault();
+      location.href = 'index.html' + (a.dataset.nav ? '?at=' + encodeURIComponent(a.dataset.nav) : ''); return;
+    }
     if (a.dataset.nav.split('.').length >= 3) return;   // a step inside the country: goto() opens that branch
     curCode = null; meta = null; curParent = null; curLevel = null; marked = null;
     clearBranch();
