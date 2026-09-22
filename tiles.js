@@ -18,12 +18,20 @@
   /* ---- data ---------------------------------------------------------------
      Country files are classic scripts, not fetch(): a page opened from file://
      is refused every fetch by CORS, while a script tag beside it still loads. */
-  var WORLD = null, BR = {}, pending = {}, NAME = {};
+  var WORLD = null, ENV = null, BR = {}, pending = {}, NAME = {};
+  // Envelopes (decision 7): each row's twelve nautical miles of sea, derived from the land line,
+  // cut where a neighbour's is nearer, never overlapping, never covering land. A pixel-sized
+  // island becomes a visible shape; a region's envelope is the union of its countries'.
+  window.ZSSE = { load: function (d) { ENV = d; if (map) paintTiles(); } };
   // Two pages share this file. The world page stops at L3 (decision 1, 20 Sep 2026): a click
   // on a country leaves for that country's own page, which is the same page with ?c=<code>,
   // and carries the descent into the country's tiers. Nothing inside a country is drawn on
   // the world map.
   var PAGE = window.ZSS_PAGE || 'world';
+  // Every file this page fetches carries the build stamp the page was published with. A visitor
+  // whose browser cached last week's tiles.js and world.js saw the United States drawn at
+  // longitude 250 for a week after the fix was live (21 Sep 2026); the stamp makes that impossible.
+  var V = window.ZSS_BUILD ? '?v=' + encodeURIComponent(window.ZSS_BUILD) : '';
   var QS = {}; location.search.replace(/^\?/, '').split('&').forEach(function (kv) {
     var i = kv.indexOf('='); if (i > 0) QS[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1)); });
   window.ZSSW = { load: function (d) { WORLD = d; boot(); } };
@@ -41,7 +49,7 @@
     if (pending[code]) { var prev = pending[code]; pending[code] = function (d) { prev(d); cb(d); }; return; }
     pending[code] = cb;
     var s = document.createElement('script');
-    s.src = 'data/b/' + code.replace(/\./g, '_') + '.js';
+    s.src = 'data/b/' + code.replace(/\./g, '_') + '.js' + V;
     s.onerror = function () { delete pending[code]; note('The shapes inside ' + (NAME[code] || code) + ' did not load. Keep data/ beside index.html.'); };
     document.head.appendChild(s);
   }
@@ -81,7 +89,9 @@
     return b;
   }
 
-  var map, tiles, worldGrp, brGrp = null, outGrp = null, ptGrp = null;
+  var map, tiles, worldGrp, envGrp, brGrp = null, outGrp = null, ptGrp = null, envOn = true;
+  var WORLD_VIEW = L.latLngBounds([-56, -170], [78, 180]);   // the inhabited world, Antarctica's coast just in
+  var PT_ZOOM = 9;                       // settlements appear from this zoom; below it the note gives their count
   var curCode = null, meta = null, curParent = null, curLevel = null;
   var rend = L.canvas({ padding: 0.3 });
 
@@ -91,7 +101,12 @@
 
     var host = document.getElementById('mapwrap');
     var fresh = host.cloneNode(false);             // drops the SVG page's click listener
-    fresh.style.height = 'min(64vh, 640px)';
+    // The map is the page. A wide rectangle, and the whole inhabited world fitted into it on
+    // open -- not a fixed centre and zoom that cut the Americas off on a narrow screen.
+    fresh.style.height = 'min(78vh, 900px)';
+    var css = document.createElement('style');
+    css.textContent = '[data-view="atlas"] .grid{grid-template-columns:1fr}[data-view="atlas"] .pane{max-width:70ch}';
+    document.head.appendChild(css);
     host.parentNode.replaceChild(fresh, host);
 
     // Basemaps that need no key. CARTO's raster tiles went behind an API key after this was
@@ -119,19 +134,39 @@
       (!document.documentElement.getAttribute('data-theme') && matchMedia('(prefers-color-scheme: dark)').matches);
     tiles = dark ? base['Dark'] : base['Light'];
 
-    map = L.map(fresh, { center: [22, 12], zoom: 2, layers: [tiles], preferCanvas: true, worldCopyJump: true });
+    map = L.map(fresh, { center: [20, 10], zoom: 2, zoomSnap: 0.25, zoomDelta: 0.5, minZoom: 1,
+                         layers: [tiles], preferCanvas: true, worldCopyJump: true });
+    map.fitBounds(WORLD_VIEW, { padding: [8, 8] });
     L.control.layers(base, { 'Esri labels & boundaries': labels }, { position: 'topright', collapsed: true }).addTo(map);
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
 
+    envGrp = L.layerGroup().addTo(map);     // under the land: added first, drawn first
     worldGrp = L.layerGroup().addTo(map);
+    // the envelope toggle sits with the page's own sliders
+    var ctl = document.querySelector('.mapctl');
+    if (ctl && !document.getElementById('envtog')) {
+      var lab = document.createElement('label');
+      lab.innerHTML = '<input type="checkbox" id="envtog" checked> envelopes';
+      ctl.insertBefore(lab, ctl.firstChild);
+      lab.querySelector('input').addEventListener('change', function (e) { envOn = e.target.checked; if (!curCode) paintTiles(); else if (curParent) openBranch(curParent, true); });
+    }
+    map.on('zoomend', function () {
+      if (!ptGrp) return;
+      if (map.getZoom() >= PT_ZOOM) { if (!map.hasLayer(ptGrp)) ptGrp.addTo(map); }
+      else if (map.hasLayer(ptGrp)) map.removeLayer(ptGrp);
+    });
     window.ZSSMAP = map;            // reachable from the console, and from a test
 
     // the page's own descent, unchanged: only what it draws on is different
     window.paintWorld = paintTiles;
     window.fitGroup = fitTiles;
-    window.drawCountry = function (code) { pickCountry(code); };
-    window.selectCountry = pickCountry;
-    window.drawBranch = openBranch;       // goto(code) for anything inside a country lands here
+    // On the world page every route into a country -- a map click, the register table, the
+    // search box, a crumb, a pasted code -- leaves for the country page. Only country.html draws
+    // inside a country. (The click path had this from the start; the others leaked until 21 Sep.)
+    var leave = function (code) { if (code) location.href = 'country.html?c=' + encodeURIComponent(code); };
+    window.drawCountry = PAGE === 'country' ? function (code) { pickCountry(code); } : leave;
+    window.selectCountry = PAGE === 'country' ? pickCountry : leave;
+    window.drawBranch = PAGE === 'country' ? openBranch : leave;
 
     var det = document.getElementById('detwrap');
     if (det) { det.hidden = true; det.innerHTML = ''; }
@@ -176,7 +211,7 @@
   function paintTiles() {
     if (!WORLD || !map) return;
     if (curCode) return;                            // a country is open; leave its levels alone
-    worldGrp.clearLayers();
+    worldGrp.clearLayers(); envGrp.clearLayers();
     var gs = groups(), col = {}, d = nav.length + 1;
     gs.forEach(function (c, i) { col[c] = catColor(i, gs.length); });
     var parent = nav.length ? nav[nav.length - 1] : '';
@@ -185,6 +220,21 @@
     // world.js is keyed by the register's own code now, not by ISO: the polygons were placed
     // under the row that claims that ground, so Greenland arrives as 5.3.4 DENMARK TERRITORIES
     // under Northern America rather than as Danish ground filed in Europe.
+    if (ENV && envOn) {
+      Object.keys(WORLD).forEach(function (code) {
+        var ev = ENV[code]; if (!ev) return;
+        var inside = within(code, parent);
+        var fill = (inside && col[pre(code, d)]) || '#8a97a3';
+        unwrap(ev.r.map(ringPts)).forEach(function (pts) {
+          var q = L.polygon(pts, { renderer: rend, color: fill, weight: .7, opacity: inside ? .55 : .18,
+            fillColor: fill, fillOpacity: (inside ? .2 : .05) * (inside ? op : 1), interactive: true });
+          q.zss = { code: code };
+          q.on('click', function (e) { descend(this.zss); L.DomEvent.stop(e); });
+          q.bindTooltip(wname(code) + ' \u00b7 ' + code + ' \u00b7 envelope, 12 nm', { sticky: true });
+          envGrp.addLayer(q);
+        });
+      });
+    }
     // Territory members (k:'t') are the ground a set like DENMARK TERRITORIES actually is --
     // Greenland, not a blob called Denmark -- drawn in the set's colour with a dashed edge and
     // the holder named, so a reader sees the place and still sees whose it is (decision, 20 Sep).
@@ -205,6 +255,17 @@
       });
     });
     wlegend(gs, col); wcrumb();
+    if (ENV && envOn) {
+      var k = document.getElementById('wkey');
+      if (k) k.insertAdjacentHTML('beforeend', '<span class="hint">pale bands: twelve nautical miles of sea, derived from the land line and split between neighbours</span>');
+    }
+  }
+
+  function envelopeUnder(code, col) {
+    if (!ENV || !envOn || !ENV[code]) return;
+    unwrap(ENV[code].r.map(ringPts)).forEach(function (pts) {
+      envGrp.addLayer(L.polygon(pts, { renderer: rend, color: col, weight: .7, opacity: .35, fillColor: col, fillOpacity: .1, interactive: false }));
+    });
   }
 
   function wname(code) { return (WORLD[code] && WORLD[code].n) || (TREE[code] ? TREE[code].n : code); }
@@ -229,8 +290,9 @@
     if (D.atlas[country] && code === country) { openBranch(code); return; }
     if (!w) { note('No row ' + code + ' on the world map.'); return; }
     nav = [pre(code, 1), pre(code, 2)];
-    worldGrp.clearLayers(); clearBranch();
+    worldGrp.clearLayers(); envGrp.clearLayers(); clearBranch();
     var col = w.k === 't' ? levelColor(4) : levelColor(3);
+    envelopeUnder(code, col);
     var rr = unwrap(w.r.map(ringPts)), frame = null;
     rr.forEach(function (pts) {
       var ub = boundsOf([pts]);
@@ -259,7 +321,7 @@
 
   function fitTiles(code) {
     if (!map || !WORLD) return;
-    if (!code) { map.setView([22, 12], 2); return; }
+    if (!code) { map.fitBounds(WORLD_VIEW, { padding: [8, 8] }); return; }
     // Not the outright extent. Europe's codes take in Greenland, the Azores, the Canaries,
     // Réunion and French Guiana, so Europe honestly spans most of the planet and framing that
     // shows you nothing. Trim a little weight off each edge by area and the camera lands on
@@ -318,7 +380,7 @@
   function countryOf(code) { return pre(code, 3); }
 
   function clearBranch() {
-    [brGrp, outGrp, ptGrp].forEach(function (g) { if (g && map.hasLayer(g)) map.removeLayer(g); });
+    [brGrp, outGrp, ptGrp].forEach(function (g) { if (g && map.hasLayer(g)) map.removeLayer(g); });   // ptGrp may be detached below PT_ZOOM
     brGrp = outGrp = ptGrp = null;
   }
 
@@ -339,11 +401,13 @@
     meta = top.meta; curCode = country; curParent = parent; curLevel = d.level;
     // a country opened by code (search, a link, the register) still sits inside its region
     if (nav.length < 2 || nav[1] !== pre(country, 2)) nav = [pre(country, 1), pre(country, 2)];
-    worldGrp.clearLayers();
+    worldGrp.clearLayers(); envGrp.clearLayers();
     clearBranch();
+    if (parent === country) envelopeUnder(country, levelColor(3));
 
     var op = (Number(document.getElementById('uop').value) || 100) / 100;
-    var col = levelColor(d.level), deep = d.level >= meta.deepest, shapes = [];
+    var col = levelColor(d.level), deep = d.level >= meta.deepest || d.units.every(function (u) { return u.leaf; }), shapes = [];
+    // 'deep' also when every unit here is a leaf: Banaadir's one unit, Mogadishu, has nothing below it
     // Siblings are told apart the way continents and regions are on the world view: one hue
     // each, from the same wheel. The level colour keeps the outline, so the legend still holds.
     // Past two dozen siblings the wheel stops separating and the level colour takes over.
@@ -362,10 +426,10 @@
         p.zss = u;
         p.on('click', function (e) {
           L.DomEvent.stop(e);
-          if (deep) { showUnit(this.zss, d.level, d); markUnit(this); }
+          if (deep || this.zss.leaf) { showUnit(this.zss, d.level, d); markUnit(this); }
           else openBranch(this.zss.c);
         });
-        p.bindTooltip(u.n + ' · ' + u.c, { sticky: true });
+        p.bindTooltip(u.n + ' · ' + u.c + (u.leaf && !deep ? ' · nothing below' : ''), { sticky: true });
         shapes.push(p);
       });
     });
@@ -389,7 +453,9 @@
       }
     }
 
-    // settlements, only at the deepest level, only the ones inside this parent
+    // settlements, only at the deepest level, only the ones inside this parent -- and only once
+    // the map is close enough for them to be dots rather than a blanket: 460 markers hid all
+    // fourteen of Massachusetts' counties at zoom 7.
     if (deep && d.pts && d.pts.length) {
       ptGrp = L.layerGroup(d.pts.map(function (q) {
         var m = L.circleMarker([q[2], q[3]], {
@@ -400,7 +466,8 @@
         m.on('click', function (e) { showUnit(this.zss, 9, d); L.DomEvent.stop(e); });
         m.bindTooltip(q[1] + ' · ' + q[0], { sticky: true });
         return m;
-      })).addTo(map);
+      }));
+      if (map.getZoom() >= PT_ZOOM) ptGrp.addTo(map);
     }
 
     // frame the children (not an antimeridian-crossing outlier among them)
@@ -418,7 +485,7 @@
       }).join('') + (meta.pts ? '<span class="hint" style="margin-left:8px">L9 · ' + fmt(meta.pts) + ' settlements, shown inside the deepest units</span>' : '');
     crumbBranch(parent);
     note(fmt(d.units.length) + ' units at L' + d.level + ' inside ' + here
-      + (deep ? (d.pts && d.pts.length ? ', with ' + fmt(d.pts.length) + ' settlements. This is as deep as this country goes; click a unit for its code.'
+      + (deep ? (d.pts && d.pts.length ? ', with ' + fmt(d.pts.length) + ' settlements' + (map.getZoom() < PT_ZOOM ? ' (zoom in to see them)' : '') + '. This is as deep as this country goes; click a unit for its code.'
                                          : '. This is as deep as this country goes; click a unit for its code.')
               : '. Click one to open what is inside it; the buttons below show a whole level at once.'));
     var box = document.getElementById('selbox'); if (box) box.innerHTML = '';
@@ -525,8 +592,12 @@
     else paintTiles();
   });
 
+  var se = document.createElement('script');
+  se.src = 'data/env.js' + V;
+  se.onerror = function () { ENV = null; };       // no envelopes is not an error; the land still draws
+  document.head.appendChild(se);
   var s = document.createElement('script');
-  s.src = 'data/world.js';
+  s.src = 'data/world.js' + V;
   s.onerror = function () { note('data/world.js did not load — keep data/ beside index.html.'); };
   document.head.appendChild(s);
 })();
