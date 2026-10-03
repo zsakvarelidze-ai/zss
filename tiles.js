@@ -18,11 +18,98 @@
   /* ---- data ---------------------------------------------------------------
      Country files are classic scripts, not fetch(): a page opened from file://
      is refused every fetch by CORS, while a script tag beside it still loads. */
-  var WORLD = null, ENV = null, BR = {}, pending = {}, NAME = {};
+  var WORLD = null, ENV = null, ENVS = {}, BR = {}, pending = {}, NAME = {};
+  // Envelope width is a display choice. '' is twelve nautical miles -- the territorial sea, a line
+  // with a meaning. '100' is a hundred kilometres: a drawing, and the page says so. The 'outline'
+  // mode draws each row as ONE closed shape, land and sea and islands inside a single outer line,
+  // the way a reader sees a country; 'band' shows the sea as a pale fringe with the coast as the edge.
+  var ENV_W = '', ENV_MODE = 'band';
+  // Outlines: the thing you are looking at as ONE closed shape (land + envelope), its parts coloured
+  // inside. World view: seven continents. Inside a continent: that continent, one line, regions
+  // coloured within. Inside a region: that region, one line, countries within. (Owner, 21 Sep.)
+  var OUT = null, OUTS = {};
+  window.ZSSO = { load: function (d) { var w = d.__w || ''; delete d.__w; OUTS[w] = d; if (w === ENV_W) { OUT = d; if (map) repaintAll(); } } };
+  // envelope colour: the row's own hue, or one colour for all
+  var ENV_COL = 'match', ENV_ONE = '#7aa2ff';
+  function envColor(fill) { return ENV_COL === 'one' ? ENV_ONE : fill; }
+  // The "screen" look (owner, 22 Sep 2026): the same register drawn as an operations screen --
+  // no basemap, a dark glass, a graticule, one glowing line around the thing you are looking at,
+  // monospace captions, scanlines and a reflection over the glass, a reticle that locks on the
+  // row under the pointer. Three hues. Nothing about the data changes; only the dress.
+  var THEME = 'atlas';
+  var SCREEN = { green: { hue: '#39ff9a', bg: '#03110c', land: '#0f4a34' },
+                 cyan:  { hue: '#4de3ff', bg: '#020a14', land: '#0e3050' },
+                 amber: { hue: '#ffb84d', bg: '#120c03', land: '#4a2e0a' } };
+  function screen() { return THEME !== 'atlas'; }
+  function screenHue() { return SCREEN[THEME].hue; }
+  var gratGrp = null, gratRend = null, reticle = null, overlay = null, hudEl = null;
+  function setTheme(t) {
+    THEME = SCREEN[t] ? t : 'atlas';
+    var el = map.getContainer();
+    el.classList.toggle('zss-screen', screen());
+    if (screen()) {
+      el.style.setProperty('--zss-hue', SCREEN[THEME].hue); el.style.setProperty('--zss-bg', SCREEN[THEME].bg);
+      if (tiles && map.hasLayer(tiles)) map.removeLayer(tiles);
+      if (!gratGrp) {
+        map.createPane('grat').style.zIndex = 350;                 // under the data, over the (absent) tiles
+        gratRend = L.canvas({ pane: 'grat', padding: 0.3 });
+        gratGrp = L.layerGroup();
+      }
+      gratGrp.clearLayers();
+      for (var lon = -180; lon <= 180; lon += 15) gratGrp.addLayer(L.polyline([[-85, lon], [85, lon]], { renderer: gratRend, color: screenHue(), weight: lon % 90 ? .6 : 1, opacity: lon % 90 ? .12 : .22, interactive: false }));
+      for (var lat = -75; lat <= 75; lat += 15) gratGrp.addLayer(L.polyline([[lat, -540], [lat, 540]], { renderer: gratRend, color: screenHue(), weight: lat ? .6 : 1, opacity: lat ? .12 : .22, interactive: false }));
+      if (!map.hasLayer(gratGrp)) gratGrp.addTo(map);
+      if (!overlay) {
+        overlay = document.createElement('div'); overlay.className = 'zss-overlay';
+        overlay.innerHTML = '<i class="c1"></i><i class="c2"></i><i class="c3"></i><i class="c4"></i>';
+        hudEl = document.createElement('div'); hudEl.className = 'zss-hud'; overlay.appendChild(hudEl);
+        el.appendChild(overlay);
+      }
+      overlay.style.display = '';
+    } else {
+      if (tiles && !map.hasLayer(tiles)) tiles.addTo(map);
+      if (gratGrp && map.hasLayer(gratGrp)) map.removeLayer(gratGrp);
+      if (overlay) overlay.style.display = 'none';
+      if (reticle && map.hasLayer(reticle)) map.removeLayer(reticle);
+    }
+  }
+  function hideReticle() { if (reticle && map && map.hasLayer(reticle)) map.removeLayer(reticle); }
+  function hudText(title, sub) {
+    if (!hudEl) return;
+    hudEl.innerHTML = '<b>ZSS // ' + title.replace(/</g, '&lt;') + '</b><span>' + sub.replace(/</g, '&lt;') + '</span>';
+  }
+  // the reticle: every layer with a tooltip locks it on while the pointer is over it
+  (function () {
+    var bt = L.Layer.prototype.bindTooltip;
+    L.Layer.prototype.bindTooltip = function () {
+      var r = bt.apply(this, arguments);
+      this.on('mouseover mousemove', function (e) {
+        if (!screen() || !e.latlng) return;
+        if (!reticle) reticle = L.marker([0, 0], { icon: L.divIcon({ className: 'zss-reticle', iconSize: [44, 44], iconAnchor: [22, 22] }), interactive: false, keyboard: false, zIndexOffset: 1000 });
+        reticle.setLatLng(e.latlng); if (!map.hasLayer(reticle)) reticle.addTo(map);
+      });
+      this.on('mouseout', function () { if (reticle && map.hasLayer(reticle)) map.removeLayer(reticle); });
+      return r;
+    };
+  })();
   // Envelopes (decision 7): each row's twelve nautical miles of sea, derived from the land line,
   // cut where a neighbour's is nearer, never overlapping, never covering land. A pixel-sized
   // island becomes a visible shape; a region's envelope is the union of its countries'.
-  window.ZSSE = { load: function (d) { ENV = d; if (map) paintTiles(); } };
+  window.ZSSE = { load: function (d) { var w = d.__w || ''; delete d.__w; ENVS[w] = d; if (w === ENV_W) { ENV = d; if (map) repaintAll(); } } };
+  // whatever is open -- the world, a country's branch, a lone outline -- drawn again with the current choices
+  function repaintAll() { if (!map) return; if (!curCode) paintTiles(); else if (curParent) openBranch(curParent, true); else if (QS.c) openCountryPage(QS.c); }
+  function wantEnv(w) {
+    ENV_W = w;
+    ENV = ENVS[w] || null; OUT = OUTS[w] || null;
+    if (ENVS[w] && OUTS[w]) { repaintAll(); return; }
+    [['env', ENVS], ['out', OUTS]].forEach(function (k) {
+      if (k[1][w]) return;
+      var se = document.createElement('script');
+      se.src = 'data/' + k[0] + w + '.js' + V;
+      se.onerror = function () { if (w !== '') { ENV_W = ''; ENV = ENVS[''] || null; OUT = OUTS[''] || null; repaintAll(); } };
+      document.head.appendChild(se);
+    });
+  }
   // Two pages share this file. The world page stops at L3 (decision 1, 20 Sep 2026): a click
   // on a country leaves for that country's own page, which is the same page with ?c=<code>,
   // and carries the descent into the country's tiers. Nothing inside a country is drawn on
@@ -95,7 +182,12 @@
   var curCode = null, meta = null, curParent = null, curLevel = null;
   var rend = L.canvas({ padding: 0.3 });
 
-  function note(t) { var n = document.getElementById('dnote'); if (n) n.textContent = t; }
+  function note(t) {
+    var n = document.getElementById('dnote'); if (!n) return;
+    // arrived through a superseded code: every note on this page says so
+    if (QS.was) t = (t ? t + ' ' : '') + 'Opened from ' + QS.was + ', a code this row superseded.';
+    n.textContent = t;
+  }
 
   function boot() {
 
@@ -146,9 +238,30 @@
     var ctl = document.querySelector('.mapctl');
     if (ctl && !document.getElementById('envtog')) {
       var lab = document.createElement('label');
-      lab.innerHTML = '<input type="checkbox" id="envtog" checked> envelopes';
+      lab.innerHTML = '<input type="checkbox" id="envtog" checked> envelopes '
+        + '<select id="envw"><option value="">12 nautical miles</option><option value="100">100 km</option><option value="100r">100 km, rough</option></select> '
+        + '<select id="envm"><option value="band">band</option><option value="outline">one outline</option></select> '
+        + '<select id="envc"><option value="match">colour of the row</option><option value="one">one colour</option></select>'
+        + '<input type="color" id="envone" value="#7aa2ff" title="envelope colour" style="width:26px;height:20px;padding:0;border:0;background:none;vertical-align:middle">';
       ctl.insertBefore(lab, ctl.firstChild);
-      lab.querySelector('input').addEventListener('change', function (e) { envOn = e.target.checked; if (!curCode) paintTiles(); else if (curParent) openBranch(curParent, true); });
+      var look = document.createElement('label');
+      look.innerHTML = 'look <select id="thm"><option value="atlas">atlas</option><option value="green">screen \u00b7 green</option><option value="cyan">screen \u00b7 cyan</option><option value="amber">screen \u00b7 amber</option></select>';
+      ctl.insertBefore(look, lab);
+      var repaint = repaintAll;
+      look.querySelector('#thm').addEventListener('change', function (e) {
+        var was = screen(); setTheme(e.target.value);
+        // the first switch to a screen brings the look it was drawn for: rough envelopes, one outline
+        if (screen() && !was && ENV_W === '' && ENV_MODE === 'band') {
+          ENV_MODE = 'outline'; lab.querySelector('#envm').value = 'outline';
+          lab.querySelector('#envw').value = '100r'; wantEnv('100r'); return;
+        }
+        repaint();
+      });
+      lab.querySelector('#envtog').addEventListener('change', function (e) { envOn = e.target.checked; repaint(); });
+      lab.querySelector('#envw').addEventListener('change', function (e) { wantEnv(e.target.value); });
+      lab.querySelector('#envm').addEventListener('change', function (e) { ENV_MODE = e.target.value; repaint(); });
+      lab.querySelector('#envc').addEventListener('change', function (e) { ENV_COL = e.target.value; repaint(); });
+      lab.querySelector('#envone').addEventListener('input', function (e) { ENV_ONE = e.target.value; ENV_COL = 'one'; lab.querySelector('#envc').value = 'one'; repaint(); });
     }
     map.on('zoomend', function () {
       if (!ptGrp) return;
@@ -203,7 +316,27 @@
       '.leaflet-tooltip{background:var(--panel,#fff);color:var(--ink,#111);border-color:var(--line,#ccc)}' +
       '.leaflet-tooltip-top:before{border-top-color:var(--line,#ccc)}' +
       '@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--lf-icon:invert(.85)}}' +
-      ':root[data-theme="dark"]{--lf-icon:invert(.85)}';
+      ':root[data-theme="dark"]{--lf-icon:invert(.85)}' +
+      /* the screen look */
+      '#mapwrap.leaflet-container.zss-screen,.leaflet-container.zss-screen{background:var(--zss-bg,#03110c) !important}' +
+      '.zss-screen .zss-overlay{position:absolute;inset:0;z-index:450;pointer-events:none;' +
+      'background:repeating-linear-gradient(0deg,rgba(0,0,0,.10) 0 1px,transparent 1px 3px),' +
+      'linear-gradient(115deg,transparent 42%,rgba(255,255,255,.055) 50%,transparent 58%),' +
+      'radial-gradient(ellipse at center,transparent 58%,rgba(0,0,0,.45) 100%)}' +
+      '.zss-overlay i{position:absolute;width:26px;height:26px;border:1.5px solid var(--zss-hue);opacity:.9}' +
+      '.zss-overlay .c1{left:8px;top:8px;border-right:0;border-bottom:0}.zss-overlay .c2{right:8px;top:8px;border-left:0;border-bottom:0}' +
+      '.zss-overlay .c3{left:8px;bottom:8px;border-right:0;border-top:0}.zss-overlay .c4{right:8px;bottom:8px;border-left:0;border-top:0}' +
+      '.zss-hud{position:absolute;left:58px;top:12px;color:var(--zss-hue);font:12px/1.5 ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 0 8px var(--zss-hue)}' +
+      '.zss-hud b{display:block;font-size:14px;font-weight:700}.zss-hud span{opacity:.7;font-size:10.5px}' +
+      '.zss-screen .leaflet-tooltip{background:rgba(0,0,0,.78);color:var(--zss-hue);border:1px solid var(--zss-hue);border-radius:0;' +
+      'font:11px/1.4 ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;letter-spacing:.05em;text-transform:uppercase;box-shadow:0 0 10px color-mix(in srgb,var(--zss-hue) 50%,transparent)}' +
+      '.zss-screen .leaflet-tooltip-top:before,.zss-screen .leaflet-tooltip-bottom:before,.zss-screen .leaflet-tooltip-left:before,.zss-screen .leaflet-tooltip-right:before{display:none}' +
+      '.zss-reticle{pointer-events:none}.zss-reticle:before,.zss-reticle:after{content:"";position:absolute;border-radius:50%;border:1px solid var(--zss-hue);box-shadow:0 0 6px var(--zss-hue)}' +
+      '.zss-reticle:before{inset:6px}.zss-reticle:after{inset:15px}' +
+      '.zss-reticle{background:linear-gradient(var(--zss-hue),var(--zss-hue)) top center/1px 7px no-repeat,linear-gradient(var(--zss-hue),var(--zss-hue)) bottom center/1px 7px no-repeat,' +
+      'linear-gradient(var(--zss-hue),var(--zss-hue)) left center/7px 1px no-repeat,linear-gradient(var(--zss-hue),var(--zss-hue)) right center/7px 1px no-repeat}' +
+      '.zss-screen .leaflet-control-scale-line,.zss-screen .leaflet-control-attribution{background:rgba(0,0,0,.6);color:var(--zss-hue);border-color:var(--zss-hue);font-family:ui-monospace,Consolas,monospace}' +
+      '.zss-screen .leaflet-bar a{background:rgba(0,0,0,.7);color:var(--zss-hue);border-color:var(--zss-hue)}';
     document.head.appendChild(css);
   })();
 
@@ -211,7 +344,7 @@
   function paintTiles() {
     if (!WORLD || !map) return;
     if (curCode) return;                            // a country is open; leave its levels alone
-    worldGrp.clearLayers(); envGrp.clearLayers();
+    worldGrp.clearLayers(); envGrp.clearLayers(); hideReticle();
     var gs = groups(), col = {}, d = nav.length + 1;
     gs.forEach(function (c, i) { col[c] = catColor(i, gs.length); });
     var parent = nav.length ? nav[nav.length - 1] : '';
@@ -220,17 +353,55 @@
     // world.js is keyed by the register's own code now, not by ISO: the polygons were placed
     // under the row that claims that ground, so Greenland arrives as 5.3.4 DENMARK TERRITORIES
     // under Northern America rather than as Danish ground filed in Europe.
-    if (ENV && envOn) {
+    var oneline = envOn && ENV_MODE === 'outline' && OUT;
+    if (oneline) {
+      // the shapes at this depth: the seven continents on the world view; inside a continent, THAT
+      // continent as one line (its regions coloured within) and the other six faded; inside a
+      // region, that region as one line and the rest faded
+      var shapes = nav.length === 0 ? gs.slice() : [parent];
+      Object.keys(TREE).filter(function (c) { return TREE[c].l === 1 && shapes.indexOf(c) < 0 && !within(parent, c); }).forEach(function (c) { shapes.push(c); });
+      shapes.forEach(function (code) {
+        var ov = OUT[code]; if (!ov) return;
+        var inside = nav.length === 0 || code === parent;
+        var hue = screen() ? SCREEN[THEME].hue : inside ? envColor(col[code] || col[pre(parent, d - 1)] || levelColor(3)) : '#8a97a3';
+        unwrap(ov.r.map(ringPts)).forEach(function (pts) {
+          if (screen() && inside) [[7, .05], [4, .12]].forEach(function (g) {      // the glow: two soft passes under the line
+            envGrp.addLayer(L.polygon(pts, { renderer: rend, color: hue, weight: g[0], opacity: g[1], fill: false, interactive: false }));
+          });
+          var q = L.polygon(pts, { renderer: rend, color: hue, weight: screen() ? 1.2 : 1.4, opacity: inside ? .95 : (screen() ? .18 : .25),
+            fillColor: hue, fillOpacity: (inside ? (screen() ? .07 : .22) : (screen() ? .02 : .06)) * (inside ? op : 1), interactive: true });
+          q.zss = { code: code };
+          q.on('click', function (e) { if (nav.length === 0) goto(this.zss.code); L.DomEvent.stop(e); });
+          q.bindTooltip((TREE[code] ? TREE[code].n : wname(code)) + ' \u00b7 ' + code + ' \u00b7 one outline, ' + envName(), { sticky: true });
+          envGrp.addLayer(q);
+        });
+      });
+      // inside the line, the parts: each child's own outline (land and sea together) filled in the
+      // child's colour, no edge of its own -- Northern America, Central America and the Caribbean
+      // sit inside North America's one line, each its own colour out to the water
+      if (nav.length) gs.forEach(function (code) {
+        var ov = OUT[code]; if (!ov) return;
+        var hue = envColor(col[code]);
+        unwrap(ov.r.map(ringPts)).forEach(function (pts) {
+          var q = L.polygon(pts, { renderer: rend, weight: screen() ? .7 : 0, opacity: screen() ? .5 : 0, stroke: screen(), color: hue, fillColor: hue, fillOpacity: (screen() ? .16 : .2) * op, interactive: true });
+          q.zss = { code: code };
+          q.on('click', function (e) { goto(this.zss.code); L.DomEvent.stop(e); });
+          q.bindTooltip((TREE[code] ? TREE[code].n : wname(code)) + ' · ' + code, { sticky: true });
+          envGrp.addLayer(q);
+        });
+      });
+    } else if (ENV && envOn) {
       Object.keys(WORLD).forEach(function (code) {
         var ev = ENV[code]; if (!ev) return;
         var inside = within(code, parent);
-        var fill = (inside && col[pre(code, d)]) || '#8a97a3';
+        var fill = inside && col[pre(code, d)] ? envColor(col[pre(code, d)]) : '#8a97a3';
         unwrap(ev.r.map(ringPts)).forEach(function (pts) {
-          var q = L.polygon(pts, { renderer: rend, color: fill, weight: .7, opacity: inside ? .55 : .18,
+          // no stroke: a second country-coloured edge twelve miles out read as a second border
+          var q = L.polygon(pts, { renderer: rend, weight: 0, opacity: 0, stroke: false,
             fillColor: fill, fillOpacity: (inside ? .2 : .05) * (inside ? op : 1), interactive: true });
           q.zss = { code: code };
           q.on('click', function (e) { descend(this.zss); L.DomEvent.stop(e); });
-          q.bindTooltip(wname(code) + ' \u00b7 ' + code + ' \u00b7 envelope, 12 nm', { sticky: true });
+          q.bindTooltip(wname(code) + ' \u00b7 ' + code + ' \u00b7 envelope, ' + envName(), { sticky: true });
           envGrp.addLayer(q);
         });
       });
@@ -240,12 +411,18 @@
     // the holder named, so a reader sees the place and still sees whose it is (decision, 20 Sep).
     Object.keys(WORLD).forEach(function (code) {
       var w = WORLD[code], inside = within(code, parent), terr = w.k === 't';
+      if (!w.r) return;                            // a superseded row: a record, not a place
       var fill = (inside && col[pre(code, d)]) || '#8a97a3';
       var label = wname(code) + ' \u00b7 ' + code + (terr && w.h ? ' \u00b7 held by ' + w.h : '') + (w.st ? ' \u00b7 ' + w.st : '');
       unwrap(w.r.map(ringPts)).forEach(function (pts) {
-        var p = L.polygon(pts, {
-          renderer: rend, color: fill, weight: terr ? 1.4 : 1, opacity: inside ? .95 : .35,
-          dashArray: terr ? '5 4' : null,
+        var oneline = envOn && ENV_MODE === 'outline' && OUT;                 // the outline carries the line
+        var p = screen()
+          // on a screen the land is dark glass with a lit coast; its colour lives in the envelope
+          ? L.polygon(pts, { renderer: rend, color: SCREEN[THEME].hue, weight: .5, opacity: inside ? .85 : .3, dashArray: terr ? '4 3' : null,
+              fillColor: SCREEN[THEME].land, fillOpacity: (inside ? .92 : .5), interactive: true })
+          : L.polygon(pts, {
+          renderer: rend, color: fill, weight: oneline ? 0 : (terr ? 1.4 : 1), opacity: oneline ? 0 : (inside ? .95 : .35),
+          dashArray: terr && !oneline ? '5 4' : null,
           fillColor: fill, fillOpacity: (inside ? (terr ? .38 : .55) : .12) * (inside ? op : 1), interactive: true
         });
         p.zss = { code: code };
@@ -255,19 +432,33 @@
       });
     });
     wlegend(gs, col); wcrumb();
-    if (ENV && envOn) {
+    if (screen()) hudText(nav.length ? (TREE[parent] ? TREE[parent].n : parent) + '  ' + parent : 'WORLD REGISTER',
+      (nav.length ? gs.length + ' parts' : '7 continents \u00b7 24 regions \u00b7 270 rows') + (envOn ? ' \u00b7 envelope ' + envName() + (ENV_MODE === 'outline' ? ' \u00b7 one outline' : '') : '') + ' \u00b7 land true');
+    if ((ENV || OUT) && envOn) {
       var k = document.getElementById('wkey');
-      if (k) k.insertAdjacentHTML('beforeend', '<span class="hint">pale bands: twelve nautical miles of sea, derived from the land line and split between neighbours</span>');
+      if (k) k.insertAdjacentHTML('beforeend', '<span class="hint">' + (ENV_MODE === 'outline' ? 'one outline: land and ' : 'pale bands: ')
+        + (ENV_W === '100r' ? 'about a hundred kilometres of sea, its edge straightened into long segments -- a drawing, not a boundary -- '
+          : ENV_W === '100' ? 'a hundred kilometres of sea -- a drawing, not a boundary -- ' : 'twelve nautical miles of sea, the territorial-sea convention, ')
+        + 'derived from the land line and split between neighbours at the equidistant line</span>');
     }
   }
 
   function envelopeUnder(code, col) {
-    if (!ENV || !envOn || !ENV[code]) return;
-    unwrap(ENV[code].r.map(ringPts)).forEach(function (pts) {
-      envGrp.addLayer(L.polygon(pts, { renderer: rend, color: col, weight: .7, opacity: .35, fillColor: col, fillOpacity: .1, interactive: false }));
+    if (!envOn) return;
+    col = envColor(col);
+    var outline = ENV_MODE === 'outline';
+    var src = outline ? (OUT && OUT[code]) : (ENV && ENV[code]);
+    if (!src) return;
+    if (screen()) col = SCREEN[THEME].hue;
+    unwrap(src.r.map(ringPts)).forEach(function (pts) {
+      if (screen() && outline) [[7, .05], [4, .12]].forEach(function (g) {
+        envGrp.addLayer(L.polygon(pts, { renderer: rend, color: col, weight: g[0], opacity: g[1], fill: false, interactive: false }));
+      });
+      envGrp.addLayer(L.polygon(pts, { renderer: rend, color: col, weight: outline ? 1.4 : 0, opacity: outline ? .9 : 0, stroke: outline, fillColor: col, fillOpacity: outline ? (screen() ? .07 : .12) : .1, interactive: false }));
     });
   }
 
+  function envName() { return ENV_W === '100' ? '100 km' : ENV_W === '100r' ? '100 km, rough' : '12 nm'; }
   function wname(code) { return (WORLD[code] && WORLD[code].n) || (TREE[code] ? TREE[code].n : code); }
 
   function descend(z) {
@@ -287,12 +478,24 @@
      outline, its source, and a plain statement of what is not there yet. */
   function openCountryPage(code) {
     var w = WORLD[code], country = pre(code, 3);
-    if (D.atlas[country] && code === country) { openBranch(code); return; }
+    // a superseded code still resolves: it opens its successor and says so
+    var sb = WORLD[country] && WORLD[country].sb;
+    if (sb) { location.replace('country.html?c=' + encodeURIComponent(sb + code.slice(country.length)) + '&was=' + encodeURIComponent(code)); return; }
+    if (D.atlas[country]) {
+      if (code === country) { openBranch(code); return; }
+      // a deeper code opens as a branch if it has one, else inside its parent's
+      wantBranch(country, function (top) {
+        var L = code.split('.').length, deepest = (top.meta && top.meta.deepest) || 9;
+        openBranch(L < deepest ? code : code.slice(0, code.lastIndexOf('.')));
+      });
+      return;
+    }
     if (!w) { note('No row ' + code + ' on the world map.'); return; }
     nav = [pre(code, 1), pre(code, 2)];
-    worldGrp.clearLayers(); envGrp.clearLayers(); clearBranch();
+    worldGrp.clearLayers(); envGrp.clearLayers(); clearBranch(); hideReticle();
     var col = w.k === 't' ? levelColor(4) : levelColor(3);
     envelopeUnder(code, col);
+    if (screen()) { col = SCREEN[THEME].hue; hudText(w.n + '  ' + code, (w.k === 't' ? 'territory' : 'country') + ' \u00b7 outline ' + w.src + (envOn ? ' \u00b7 envelope ' + envName() : '') + ' \u00b7 land true'); }
     var rr = unwrap(w.r.map(ringPts)), frame = null;
     rr.forEach(function (pts) {
       var ub = boundsOf([pts]);
@@ -335,28 +538,35 @@
         // its landmass is 160 wide regardless. A ring that big is not a place a camera can
         // frame, so it is left out of the framing -- it is still drawn, just not aimed at.
         if (w > 150 || h > 60) return;    // 150, not 90: Asiatic Russia alone is 130 degrees wide and is a place
-        parts.push({ x0: q[0], y0: q[1], x1: q[2], y1: q[3], w: Math.max(w * h, 1e-4) });
+        parts.push({ c: c, x0: q[0], y0: q[1], x1: q[2], y1: q[3], w: Math.max(w * h, 1e-4) });
       });
     });
     if (!parts.length) return;
-    if (parts.length === 1) {
-      var o = parts[0];
-      map.fitBounds(L.latLngBounds([o.y0, o.x0], [o.y1, o.x1]), { padding: [24, 24] });
-      return;
+    // The trim is done child by child, then the children's frames are joined: Central America and
+    // the Caribbean are a twentieth of North America by area and a single trim dropped them off the
+    // bottom of the frame (21 Sep 2026). A child is never trimmed away by its parent's bulk; only
+    // its own outliers are (France's mainland frames France, not French Guiana).
+    var depth = code.split('.').length, kids = {};
+    parts.forEach(function (q) { (kids[pre(q.c, depth + 1)] = kids[pre(q.c, depth + 1)] || []).push(q); });
+    function frame(ps) {
+      if (ps.length === 1) return ps[0];
+      var total = ps.reduce(function (a, q) { return a + q.w; }, 0), CUT = 0.05 * total;
+      function edge(key, dir) {
+        var a = ps.slice().sort(function (m, n) { return dir > 0 ? m[key] - n[key] : n[key] - m[key]; });
+        var acc = 0;
+        for (var i = 0; i < a.length; i++) { acc += a[i].w; if (acc > CUT) return a[i][key]; }
+        return a[a.length - 1][key];
+      }
+      var f = { x0: edge('x0', 1), y0: edge('y0', 1), x1: edge('x1', -1), y1: edge('y1', -1) };
+      if (!(f.x1 > f.x0) || !(f.y1 > f.y0)) f = ps.slice().sort(function (m, n) { return n.w - m.w; })[0];
+      return f;
     }
-    var total = parts.reduce(function (a, q) { return a + q.w; }, 0), CUT = 0.05 * total;
-    function edge(key, dir) {
-      var a = parts.slice().sort(function (m, n) { return dir > 0 ? m[key] - n[key] : n[key] - m[key]; });
-      var acc = 0;
-      for (var i = 0; i < a.length; i++) { acc += a[i].w; if (acc > CUT) return a[i][key]; }
-      return a[a.length - 1][key];
-    }
-    var x0 = edge('x0', 1), y0 = edge('y0', 1), x1 = edge('x1', -1), y1 = edge('y1', -1);
-    if (!(x1 > x0) || !(y1 > y0)) {
-      var big = parts.slice().sort(function (m, n) { return n.w - m.w; })[0];
-      x0 = big.x0; y0 = big.y0; x1 = big.x1; y1 = big.y1;
-    }
-    map.fitBounds(L.latLngBounds([y0, x0], [y1, x1]), { padding: [24, 24] });
+    var bb = null;
+    Object.keys(kids).forEach(function (k) {
+      var f = frame(kids[k]);
+      bb = bb ? { x0: Math.min(bb.x0, f.x0), y0: Math.min(bb.y0, f.y0), x1: Math.max(bb.x1, f.x1), y1: Math.max(bb.y1, f.y1) } : { x0: f.x0, y0: f.y0, x1: f.x1, y1: f.y1 };
+    });
+    map.fitBounds(L.latLngBounds([bb.y0, bb.x0], [bb.y1, bb.x1]), { padding: [36, 36] });
   }
 
   /* ---- one country, one branch at a time ------------------------------------
@@ -401,9 +611,11 @@
     meta = top.meta; curCode = country; curParent = parent; curLevel = d.level;
     // a country opened by code (search, a link, the register) still sits inside its region
     if (nav.length < 2 || nav[1] !== pre(country, 2)) nav = [pre(country, 1), pre(country, 2)];
-    worldGrp.clearLayers(); envGrp.clearLayers();
+    worldGrp.clearLayers(); envGrp.clearLayers(); hideReticle();
     clearBranch();
     if (parent === country) envelopeUnder(country, levelColor(3));
+    if (screen()) hudText((NAME[parent] || (TREE[parent] ? TREE[parent].n : parent)) + '  ' + parent,
+      d.units.length + ' units \u00b7 level ' + d.level + (envOn && parent === country ? ' \u00b7 envelope ' + envName() : '') + ' \u00b7 land true');
 
     var op = (Number(document.getElementById('uop').value) || 100) / 100;
     var col = levelColor(d.level), deep = d.level >= meta.deepest || d.units.every(function (u) { return u.leaf; }), shapes = [];
@@ -420,8 +632,9 @@
       if (ub && (ub.getEast() - ub.getWest()) < 90) frame = frame ? frame.extend(ub) : ub;
       rr.forEach(function (pts) {
         var p = L.polygon(pts, {
-          renderer: rend, color: many ? col : 'rgba(255,255,255,.55)', weight: d.level >= 7 ? .7 : 1.1, opacity: .95,
-          fillColor: fill, fillOpacity: (many ? .38 : .5) * op, interactive: true
+          // on a screen the parts are lit edges in the hue, tinted faintly in their own colour
+          renderer: rend, color: screen() ? SCREEN[THEME].hue : (many ? col : 'rgba(255,255,255,.55)'), weight: d.level >= 7 ? .7 : (screen() ? .8 : 1.1), opacity: screen() ? .8 : .95,
+          fillColor: fill, fillOpacity: (screen() ? .22 : (many ? .38 : .5)) * op, interactive: true
         });
         p.zss = u;
         p.on('click', function (e) {
@@ -592,10 +805,7 @@
     else paintTiles();
   });
 
-  var se = document.createElement('script');
-  se.src = 'data/env.js' + V;
-  se.onerror = function () { ENV = null; };       // no envelopes is not an error; the land still draws
-  document.head.appendChild(se);
+  wantEnv('');                                    // twelve nautical miles by default; the selector fetches others
   var s = document.createElement('script');
   s.src = 'data/world.js' + V;
   s.onerror = function () { note('data/world.js did not load — keep data/ beside index.html.'); };

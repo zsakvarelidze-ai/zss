@@ -188,9 +188,16 @@ footer{color:var(--muted);font-size:12.5px;margin-top:32px;border-top:1px solid 
 <div data-view="atlas">
   <h1>Atlas</h1>
   <p class="lede">The map opens at continents. Click one and it frames that continent and shows
-  its regions; click a region and it shows the countries inside it; click a country and its own
-  divisions are drawn below. Each click descends one segment of the code, because a code <i>is</i>
-  the path down the tree &mdash; which is also why selecting a unit lights everything inside it.</p>
+  its regions; click a region and it shows the countries and territories inside it; click a
+  country and it opens on its own page, where its divisions are drawn tier by tier. The world map
+  stops at the country. Each click descends one segment of the code, because a code <i>is</i>
+  the path down the tree. The pale sea around each row is its envelope: derived from the land
+  line, never a boundary. Set it to <i>one outline</i> and the thing you are looking at becomes
+  a single closed shape &mdash; a continent with its regions coloured inside, a region with its
+  countries &mdash; at twelve nautical miles or a hundred kilometres, in each row's colour or one
+  colour of your choosing. <i>Look</i> switches the map to a screen &mdash; dark glass, a graticule,
+  one lit line around the thing you are looking at, a reticle on the row under the pointer &mdash;
+  in green, cyan or amber; the register underneath is the same.</p>
   <section>
     <div class="grid">
       <div>
@@ -416,7 +423,7 @@ files are not published.
 </footer>
 </div>
 
-<script src="data/site.js?v=2026-09-21b"></script>
+<script src="data/site.js?v=2026-09-23g"></script>
 <script>
 const D = window.__ZSSDATA__, fmt = n => n.toLocaleString('en-US'), st = D.st;
 /* Units arrive as [codeSuffix, name, path] in the build that has a size ceiling to respect.
@@ -1004,9 +1011,9 @@ function drawFaults(){
 }
 </script>
 
+<script>window.ZSS_BUILD="2026-09-23g";</script>
 <script src="lib/leaflet.js"></script>
-<script>window.ZSS_BUILD="2026-09-21b";</script>
-<script src="tiles.js?v=2026-09-21b"></script>
+<script src="tiles.js?v=2026-09-23g"></script>
 
 </body>
 </html>
