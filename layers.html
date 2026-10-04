@@ -1,0 +1,698 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<div style="max-width:1180px;margin:0 auto;padding:10px 16px 0;font:13px ui-monospace,Menlo,Consolas,monospace"><a href="index.html" style="color:inherit;opacity:.7;text-decoration:none">&larr; ZSS world register: atlas, register, faults</a></div>
+
+<title>ZSS · Layers L1–L9</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap">
+<style>
+  :root {
+    --paper: #f4f0e5; --panel: #e9e3d4; --tile: #fbf9f3; --rule: #d5ccb8;
+    --ink: #1c2230; --dim: #7a746a; --accent: #2454c8;
+    --c1: #a86a15; --c2: #566f82; --c3: #a8443f; --c4: #2f5ea8;
+    --c5: #3a7350; --c6: #1c757c; --c7: #74477f;
+    --tint-co: #e7eef8; --tint-te: #f6e6d2; --alt: #b5474d;
+    --s-active: #a83029; --s-frozen: #2f5f96; --s-settled: #2c6a4f; --s-open: #7a746a;
+    --l-pd: #2c6a4f; --l-ccby: #96690f; --l-odbl: #b0452c; --l-own: #1f6f73;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14171d; --panel: #1c2029; --tile: #222731; --rule: #333a47;
+      --ink: #e9e3d5; --dim: #968f85; --accent: #7aa2ff;
+      --c1: #d9a154; --c2: #93aabd; --c3: #e08079; --c4: #7aa2ff;
+      --c5: #74b98c; --c6: #5cc0c6; --c7: #b98cc4;
+      --tint-co: #1a2331; --tint-te: #2a2316; --alt: #e07a7f;
+      --s-active: #e8817a; --s-frozen: #7fb0e8; --s-settled: #6cbd93; --s-open: #968f85;
+      --l-pd: #6cbd93; --l-ccby: #d3a955; --l-odbl: #e08a71; --l-own: #5cb3b8;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14171d; --panel: #1c2029; --tile: #222731; --rule: #333a47;
+    --ink: #e9e3d5; --dim: #968f85; --accent: #7aa2ff;
+    --c1: #d9a154; --c2: #93aabd; --c3: #e08079; --c4: #7aa2ff;
+    --c5: #74b98c; --c6: #5cc0c6; --c7: #b98cc4;
+    --tint-co: #1a2331; --tint-te: #2a2316; --alt: #e07a7f;
+    --s-active: #e8817a; --s-frozen: #7fb0e8; --s-settled: #6cbd93; --s-open: #968f85;
+    --l-pd: #6cbd93; --l-ccby: #d3a955; --l-odbl: #e08a71; --l-own: #5cb3b8;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.5; }
+  .mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding-inline: 20px; padding-block: 0 56px; }
+  @media (max-width: 520px) { .wrap { padding-inline: 16px; } }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  .mast { padding-block: 30px 18px; border-bottom: 2px solid var(--ink); }
+  .kicker { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin: 0 0 8px; }
+  .mast h1 { font-family: 'IBM Plex Serif', Georgia, serif; font-weight: 600; font-size: clamp(26px, 4.4vw, 38px); line-height: 1.1; margin: 0 0 10px; letter-spacing: -0.015em; text-wrap: balance; }
+  .mast p { margin: 0; max-width: 62ch; color: var(--dim); font-size: 14px; }
+  .mast p + p { margin-top: 8px; }
+
+  .ladder { display: grid; grid-template-columns: repeat(9, 1fr); gap: 1px; margin-top: 18px; background: var(--rule); border: 1px solid var(--rule); }
+  .ladder div { background: var(--tile); padding: 8px 6px 6px; text-align: center; min-width: 0; }
+  .ladder b { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: var(--dim); font-weight: 600; }
+  .ladder span { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .ladder small { display: block; font-size: 9.5px; color: var(--dim); line-height: 1.2; margin-top: 2px; overflow-wrap: anywhere; }
+  .ladder .empty span { color: var(--dim); opacity: 0.55; }
+  @media (max-width: 720px) { .ladder { grid-template-columns: repeat(3, 1fr); } }
+
+  .bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--paper); border-bottom: 1px solid var(--rule); padding-block: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 20px; }
+  .search { flex: 1 1 220px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--rule); background: var(--tile); border-radius: 3px; padding: 7px 10px; }
+  .search input { flex: 1; min-width: 0; border: 0; background: none; color: inherit; font: inherit; outline: none; }
+  .search .lab { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); }
+  .btn { border: 1px solid var(--rule); background: var(--tile); color: var(--dim); border-radius: 3px; padding: 7px 11px; font: 500 12px/1 'IBM Plex Sans', sans-serif; cursor: pointer; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+  .seg { display: inline-flex; }
+  .seg .btn { border-radius: 0; margin-left: -1px; }
+  .seg .btn:first-child { border-radius: 3px 0 0 3px; margin-left: 0; }
+  .seg .btn:last-child { border-radius: 0 3px 3px 0; }
+  .found { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); margin-left: auto; }
+  .note { margin: 8px 0 0; font-size: 11px; color: var(--accent); font-family: 'IBM Plex Mono', monospace; }
+  .note:empty { display: none; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 9px 0 0; font-size: 11px; color: var(--dim); }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .legend i { width: 20px; height: 12px; border: 1px solid var(--rule); display: block; }
+  .legend i.co { background: var(--tint-co); }
+  .legend i.te { background: var(--tint-te); box-shadow: inset 3px 0 0 var(--c4); }
+
+  .level { margin-top: 26px; border: 1px solid var(--ink); }
+  .lhead { width: 100%; display: grid; grid-template-columns: 46px 1fr auto; gap: 12px; align-items: baseline;
+           background: var(--ink); color: var(--paper); border: 0; padding: 9px 12px; cursor: pointer; text-align: left; font: inherit; }
+  .lhead .lcode { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; }
+  .lhead .lname { font-family: 'IBM Plex Serif', Georgia, serif; font-size: 17px; font-weight: 600; }
+  .lhead .lcount { font-family: 'IBM Plex Mono', monospace; font-size: 11px; opacity: 0.75; font-variant-numeric: tabular-nums; text-align: right; }
+  .car { display: inline-block; transition: transform 0.15s; }
+  .shut > .lhead .car, .shut > .chdr .car, .shut > .rhdr .car, .shut > .khdr .car { transform: rotate(-90deg); }
+  .shut > .lbody, .shut > .cbody, .shut > .rbody, .shut > .kbody { display: none; }
+  .lbody { background: var(--tile); }
+  .lempty { padding: 12px; font-size: 12px; color: var(--dim); font-style: italic; }
+
+  .cgroup { border-top: 1px solid var(--rule); }
+  .cgroup:first-child { border-top: 0; }
+  .chdr { display: grid; grid-template-columns: 14px 52px 18px 42px 1fr auto; gap: 10px; align-items: center; padding: 8px 12px; width: 100%;
+          background: color-mix(in srgb, var(--h) 12%, var(--panel)); border: 0; border-bottom: 1px solid var(--rule);
+          color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .chdr:hover .cname { color: var(--h); }
+  .chdr .car, .rhdr .car, .khdr .car { font-size: 9px; color: var(--h); }
+  .chdr .cn { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: var(--h); text-align: right; }
+  .chdr .cname { font-weight: 600; font-size: 14px; }
+  .cmeta, .rmeta, .kmeta { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--dim); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+  .rhdr { display: grid; grid-template-columns: 14px 52px 18px 42px 74px 1fr auto; gap: 10px; align-items: center; padding: 6px 12px 5px 26px; width: 100%;
+          border: 0; border-bottom: 1px solid color-mix(in srgb, var(--rule) 60%, transparent); background: color-mix(in srgb, var(--panel) 45%, transparent);
+          color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .rhdr:hover .rname { color: var(--h); }
+  .rhdr .rn { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--dim); text-align: right; }
+  .rhdr .rc { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; color: var(--h); }
+  .rhdr .rname { font-size: 13px; font-weight: 600; }
+  .rgrp.empty .rname, .rgrp.empty .rmeta { opacity: 0.5; }
+
+  .thdr { display: grid; grid-template-columns: 52px 18px 42px 1fr; gap: 10px; padding: 5px 12px 4px 26px; background: color-mix(in srgb, var(--panel) 70%, transparent); }
+  .thdr .tn { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--h); text-align: right; }
+  .thdr .tw { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+
+  .khdr { display: grid; grid-template-columns: 14px 52px 18px 42px var(--kw, 92px) 1fr auto; gap: 10px; align-items: center; padding: 4px 12px 4px 40px; width: 100%;
+          border: 0; border-bottom: 1px solid color-mix(in srgb, var(--rule) 50%, transparent);
+          background: color-mix(in srgb, var(--panel) 25%, transparent); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .khdr.kco { background: var(--tint-co); }
+  .khdr.kterr { background: var(--tint-te); box-shadow: inset 3px 0 0 var(--h); }
+  .khdr:hover .kname { color: var(--h); }
+  .khdr .kn { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--dim); text-align: right; }
+  .khdr .kc { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); white-space: nowrap; }
+  .khdr .kname { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+  .khdr .kname.isterr { font-weight: 500; }
+  .khdr .kname.isterr::after { content: ' · ' attr(data-hold); font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--h); }
+  .kgrp.empty .khdr { opacity: 0.55; }
+
+  .phdr { display: grid; grid-template-columns: 52px 18px 42px 1fr; gap: 10px; padding: 4px 12px 3px 40px;
+           background: color-mix(in srgb, var(--panel) 45%, transparent); }
+  .phdr .pw { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.04em; color: var(--h); overflow-wrap: anywhere; }
+  .phdr .pw b { color: var(--dim); font-weight: 500; }
+
+  .row { display: grid; grid-template-columns: 52px 18px 42px var(--kw, 92px) 1fr auto; gap: 10px; align-items: center; padding: 3px 12px;
+         cursor: copy; border-bottom: 1px solid color-mix(in srgb, var(--rule) 40%, transparent); }
+  .row:hover { background: var(--panel); }
+  .row .n, .rhdr .rn, .khdr .kn { display: flex; justify-content: flex-end; align-items: baseline; gap: 5px;
+        font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+  .n b, .rn b, .kn b { font-size: 10px; font-weight: 600; color: var(--h); opacity: 0.95; }
+  .n i, .rn i, .kn i { font-style: normal; font-size: 9px; color: var(--dim); opacity: 0.6; }
+  .ab { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; color: var(--h); opacity: 0.85; }
+  .ab.inh { opacity: 0.5; font-weight: 500; }   /* carried down from the country — a label, never part of the code */
+  .row .k { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); white-space: nowrap; }
+  .row .v { font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+  .row.copied .k { color: var(--accent); font-weight: 600; }
+  .row.ind { padding-left: 26px; background: var(--tint-co); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--tint-co) 55%, var(--rule)); }
+  .row.terr { background: var(--tint-te); box-shadow: inset 3px 0 0 var(--h); }
+  .row.sub { padding-left: 54px; }
+  .row.sub .k { font-size: 10px; }
+  .row.sub[data-kind="territory"] { background: var(--tint-te); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--h) 55%, transparent); }
+  .row.sub[data-kind="country"] { background: var(--tint-co); }
+  .row.l1 { padding-block: 6px; }
+  .row.l1 .v { font-size: 14px; font-weight: 600; }
+  .row .meta { font-family: 'IBM Plex Mono', monospace; color: var(--dim); font-size: 10px; margin-left: 6px; }
+  .ut { margin-left: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.04em; color: var(--h); opacity: 0.72; }
+  .ut::before { content: '\00b7'; margin-right: 7px; opacity: 0.55; }
+  .sn { margin-left: 6px; font-size: 11px; color: var(--dim); }                       /* the note beside a status: who, and what kind of line */
+  .hold { margin-left: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.04em; color: var(--h); opacity: 0.8; }
+  .hold::before { content: '\00b7'; margin-right: 7px; opacity: 0.55; }
+  body.geomode .sn, body.geomode .hold, body.licmode .sn, body.licmode .hold { display: none; }
+  .st { margin-left: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+        padding: 1px 5px; border-radius: 2px; border: 1px solid currentColor; cursor: help; }
+  .st-active { color: var(--s-active); } .st-frozen { color: var(--s-frozen); }
+  .st-settled { color: var(--s-settled); } .st-disputed, .st-unclaimed { color: var(--s-open); }
+  .st.inh { border-style: dashed; opacity: 0.6; font-weight: 500; }
+  .geo { display: none; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; justify-self: end;
+         letter-spacing: 0.03em; padding: 1px 5px; border-radius: 2px; cursor: help; white-space: nowrap; }
+  body.geomode .geo { display: inline; }
+  body.geomode .ut, body.geomode .st, body.geomode .lic { display: none; }
+  .g-file { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); font-weight: 600; }
+  .g-copy { color: var(--alt); border: 1px dashed currentColor; }
+  .g-union { color: var(--dim); opacity: 0.7; }
+  body.licmode .geo { display: none; }
+  .lic { display: none; font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600; letter-spacing: 0.05em; padding: 1px 5px; border-radius: 2px;
+         cursor: help; white-space: nowrap; justify-self: end; border: 1px solid currentColor; }
+  body.licmode .lic { display: inline; }
+  body.licmode .ut, body.licmode .st { display: none; }
+  body.dropodbl .row.odbl-hit { opacity: 0.2; }
+  body.dropodbl .row.odbl-hit .v { text-decoration: line-through; }
+  .lic-pd { color: var(--l-pd); } .lic-ccby { color: var(--l-ccby); } .lic-odbl { color: var(--l-odbl); } .lic-own { color: var(--l-own); }
+  .lic.inh { border-style: dashed; opacity: 0.62; font-weight: 500; }
+  .src6 { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--dim); opacity: 0.8; margin-left: 6px; }
+  input[type="checkbox"] { margin: 0; width: 13px; height: 13px; accent-color: var(--accent); cursor: pointer; }
+  .row.sel { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+  .row.sup .lbl { text-decoration: line-through; text-decoration-thickness: 1px; opacity: 0.65; }
+  .row.sup .k { opacity: 0.6; }
+  .rt { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--dim); border: 1px solid var(--rule); border-radius: 2px; padding: 0 4px; white-space: nowrap; }
+  .row.sel .k { color: var(--accent); }
+  .selbar { display: none; gap: 10px; align-items: center; padding: 8px 0 0; font-size: 12px; }
+  .selbar.on { display: flex; }
+  .selbar b { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; color: var(--accent); }
+  mark { background: color-mix(in srgb, var(--accent) 26%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+  .hide { display: none !important; }
+
+  /* search results */
+  .results { margin-top: 20px; border: 1px solid var(--ink); }
+  .results .rhead { background: var(--ink); color: var(--paper); padding: 9px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.08em; }
+  .results .row { grid-template-columns: 34px 18px 42px var(--kw, 120px) 1fr auto; }
+  .results .trail { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--dim); overflow-wrap: anywhere; }
+  .results .trail b { color: var(--h); font-weight: 600; }
+  .more { padding: 8px 12px; font-size: 12px; color: var(--dim); font-style: italic; }
+
+  .flatwrap { overflow-x: auto; border: 1px solid var(--rule); margin-top: 20px; }
+  table.flat { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.flat th { text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--rule); background: var(--panel); position: sticky; top: 0; }
+  table.flat td { padding: 5px 10px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  table.flat td.c { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--h); font-variant-numeric: tabular-nums; }
+  table.flat td.d { color: var(--dim); }
+
+  .colo { margin-top: 34px; padding-top: 18px; border-top: 2px solid var(--ink); display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+  .colo h2 { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin: 0 0 6px; font-weight: 600; }
+  .colo p { margin: 0; font-size: 13px; color: var(--dim); }
+  .colo code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--ink); }
+  .loading { padding: 40px 0; color: var(--dim); font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+
+  @media (max-width: 520px) {
+    .row { grid-template-columns: 44px 16px 36px var(--kw, 74px) 1fr auto; gap: 6px; }
+    .row.sub { padding-left: 28px; }
+    .chdr { grid-template-columns: 12px 44px 16px 36px 1fr auto; gap: 6px; }
+    .rhdr { grid-template-columns: 12px 44px 16px 36px 68px 1fr auto; gap: 6px; padding-left: 16px; }
+    .thdr, .phdr { grid-template-columns: 44px 16px 36px 1fr; gap: 6px; padding-left: 16px; }
+    .khdr { grid-template-columns: 12px 28px 16px 36px var(--kw, 74px) 1fr auto; gap: 6px; padding-left: 22px; }
+    .row.ind { padding-left: 16px; }
+    .results .row { grid-template-columns: 30px 16px 36px var(--kw, 96px) 1fr auto; }
+    .lhead { grid-template-columns: 40px 1fr auto; gap: 8px; }
+    .lhead .lname { font-size: 15px; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <p class="kicker">World administrative boundaries · register</p>
+    <h1>Boundary Layers L1–L9</h1>
+    <p id="lede">Loading the register…</p>
+    <div class="ladder" id="ladder"></div>
+  </header>
+
+  <div class="bar">
+    <label class="search"><span class="lab">FIND</span><input id="q" type="search" placeholder="name or code — try 3.6.5, Kirinyaga or 1.2.6" autocomplete="off"></label>
+    <button class="btn" type="button" id="toggleAll">Collapse all</button>
+    <span class="seg">
+      <button class="btn" type="button" data-only="" aria-pressed="true">All</button>
+      <button class="btn" type="button" data-only="country" aria-pressed="false">Countries</button>
+      <button class="btn" type="button" data-only="territory" aria-pressed="false">Territories</button>
+    </span>
+    <button class="btn" type="button" id="geoBtn" aria-pressed="false" title="Which nodes hold their own line, which copy a single child, which are unions">Geometry</button>
+    <button class="btn" type="button" id="licBtn" aria-pressed="false" title="Where each line comes from and what the licence costs">Sources</button>
+    <button class="btn" type="button" id="odblBtn" aria-pressed="false" title="Grey out everything that would go dark if you refused ODbL">Drop ODbL</button>
+    <button class="btn" type="button" id="contested" aria-pressed="false" title="Only rows inside a dispute">Contested</button>
+    <button class="btn" type="button" id="flatBtn" aria-pressed="false" title="L3 only: every country and territory set in one table">Flat list · L3</button>
+    <span class="found" id="found"></span>
+  </div>
+  <p class="note" id="note"></p>
+  <div class="legend">
+    <span><i class="co"></i>Country — <code class="mono">ANG · 1.1.1</code>, counted 1–198</span>
+    <span><i class="te"></i>Territory set — numbered after its region's countries, holder carried on the row</span>
+    <span>· <code class="mono">county</code> — what the row is where its country has a word for it; blank means no word is established, not that none exists</span>
+    <span><b class="st st-frozen">frozen</b> its own dispute · <b class="st st-frozen inh">frozen</b> inherited from above — the note beside it says between whom</span>
+  </div>
+
+  <div class="selbar" id="selbar">
+    <b id="selcount">0</b><span>selected</span>
+    <button class="btn" type="button" id="copySel">Copy codes</button>
+    <button class="btn" type="button" id="clearSel">Clear</button>
+  </div>
+
+  <main id="levels"><div class="loading">Reading the register…</div></main>
+
+  <div class="results hide" id="results"></div>
+  <div class="flatwrap hide" id="flatwrap">
+    <table class="flat">
+      <thead><tr><th>#</th><th>Code</th><th>Name</th><th>Held by</th><th>Region</th><th>Continent</th></tr></thead>
+      <tbody id="flatbody"></tbody>
+    </table>
+  </div>
+
+  <footer class="colo">
+    <div><h2>One list per level</h2><p>L1 is continents and nothing else. L2 the continental regions under them. L3 the 198 countries and 43 territory sets. L4 and below are grouped continent → region → country, and a country's rows open on demand — the page carries the register with it, built from the same files the validator checks, and <code>register.json</code> is published beside it for anyone who wants the data alone.</p></div>
+    <div><h2>Two numbers per row</h2><p>The bold number is the row's place inside its parent — the last segment of its code. The faint one is its running number across the whole level, in register order. The code itself is the address and never changes when siblings are added.</p></div>
+    <div><h2>How a territory is coded</h2><p>A set sits in the region where the ground is, not where the holder is: Spain's is in North Africa, because the Canaries, Ceuta, Melilla and the plazas are. L3 carries one row per holder per region, numbered straight after that region's countries. Who holds a set is a field on the row, never part of the code, so a transfer of sovereignty changes no codes at all. Disputed and unclaimed ground has no holder and says so.</p></div>
+    <div><h2>Retired, not removed</h2><p>A code is an address: once issued it is never deleted, reused or renumbered, because somebody may have written it down. When a row turns out to name ground another code already names, it is <em>superseded</em> — struck through here, still listed, still resolving, pointing at the code that now holds the ground. It stops being counted, which is why a level's total can be one lower than the rows beneath it. Nothing is lost; the duplicate is.</p></div>
+    <div><h2>One set, one tick</h2><p>A set is one thing made of pieces that do not touch, so its L3 checkbox takes the whole set at once. L4 is where the pieces are named and each carries its own box — the Canaries alone, the plazas alone. Drop one and the set's box goes half-filled, which is the register saying you are holding part of a set, not all of it.</p></div>
+    <div><h2>Where L6 came from</h2><p id="l6note">The L6 sweep of 16–17 September placed each geoBoundaries ADM2 unit inside its ADM1 parent by point-in-polygon on the source geometry and matched that parent to an existing L5 row by name. Countries whose names did not all resolve were left out rather than guessed; 44 more wait on the share-alike ruling.</p></div>
+    <div><h2>What a level heading means</h2><p>&ldquo;Provinces&rdquo;, &ldquo;Districts&rdquo; and the rest are <em>glosses</em>, not definitions. Below L3 a level is depth in that country&rsquo;s own ladder: Rwanda&rsquo;s provinces sit at L4 and its districts at L5, while France&rsquo;s r&eacute;gions sit at L4 and its d&eacute;partements at L5. Both are right. What holds everywhere is containment &mdash; a bigger division above a smaller one, each wholly holding its children, nothing overlapping and nothing spanning two parents. Nothing is lost by this: L5 never was a province tier &mdash; Cabo Verde&rsquo;s is islands, Ireland&rsquo;s counties, the UK&rsquo;s its own grouping &mdash; and the <code>kind</code> column on each row carries the country&rsquo;s own word, filled on 97% of them. Depth is the level&rsquo;s job; what a thing is, is <code>kind</code>&rsquo;s.</p></div>
+    <div><h2>What a row is</h2><p>The level says how deep; the word after the name says what. Kenya's L5 are <code>counties</code>, Rwanda's <code>districts</code>. New L6 rows carry no word yet because the source does not say and the register does not assert.</p></div>
+    <div><h2>How deep it goes</h2><p>Depth follows the ground. Georgia runs to L8, and so now do Bangladesh, South Africa and Sierra Leone; 21 countries reach L7; most stop at L6; L9 — settlements — is empty until the gazetteer layer is allowed through. A level left empty for a place means nothing has been entered below it, which is not yet the same as nothing being there.</p></div>
+  </footer>
+</div>
+
+<script>
+(async function () {
+  const HUES = ['--c1','--c2','--c3','--c4','--c5','--c6','--c7'];
+  const LNAME = { 1: 'Continents', 2: 'Continent Regions', 3: 'Countries', 4: 'Country Regions', 5: 'Provinces',
+                  6: 'Districts and Municipalities', 7: 'Communes', 8: 'Wards and Sub-districts', 9: 'Settlements' };
+  const LWORD = { 4: 'country region', 5: 'province', 6: 'district', 7: 'commune', 8: 'ward', 9: 'settlement' };
+  const LICN = { pd: { rank: 0, name: 'public domain', owe: 'nothing' }, ccby: { rank: 1, name: 'CC BY', owe: 'attribution' },
+                 odbl: { rank: 2, name: 'ODbL', owe: 'attribution + share-alike' }, own: { rank: 0, name: 'own survey', owe: 'nothing — yours' } };
+  const SLAB = { active: 'active', frozen: 'frozen', settled: 'settled', disputed: 'disputed', unclaimed: 'unclaimed' };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const el = (cls, html) => { const d = document.createElement('div'); d.className = cls; if (html != null) d.innerHTML = html; return d; };
+  const plural = (n, w) => n.toLocaleString() + ' ' + (n === 1 ? w : w.endsWith('y') ? w.slice(0, -1) + 'ies' : w + 's');
+  const nn = (loc, glob) => (loc == null ? '' : '<b>' + loc + '</b>') + (glob == null ? '' : '<i>' + glob.toLocaleString() + '</i>');
+  const host = document.getElementById('levels');
+
+  // The register travels inside the page. It used to be fetched from register.json beside it,
+  // but the iPad app answers that fetch with 403, and a page that cannot show its data is not
+  // a page. register.json is still published next to this file for anyone who wants the data.
+  let D;
+  try {
+    host.innerHTML = '<div class="loading">Loading the register…</div>';
+    const resp = await fetch('data/register.json?v=2026-10-04i');
+    if (!resp.ok) throw new Error('data/register.json answered ' + resp.status);
+    D = await resp.json();
+    if (D.compact) {          // rows grouped by country, codes relative, level implied, blanks trimmed
+      const out = [];
+      for (const p in D.rows) for (const e of D.rows[p]) {
+        const code = p + '.' + e[0], segs = code.split('.');
+        out.push([code, segs.length, e[1], e[2] || +segs[segs.length - 1], e[3] || '', e[4] || '', e[5] || '', e[6] || '']);
+      }
+      D.rows = out;
+    }
+  } catch (e) {
+    host.innerHTML = '<div class="loading">The register could not be loaded (' + esc(e.message) + ').</div>';
+    return;
+  }
+
+  // ---------- index ----------
+  const N = new Map();            // code -> node
+  const kids = new Map();         // code -> [child nodes], in order
+  const seg = c => c.split('.');
+  const parentOf = c => { const i = c.lastIndexOf('.'); return i < 0 ? null : c.slice(0, i); };
+  D.world.forEach(w => N.set(w[0], { code: w[0], level: w[1], name: w[2], order: w[3], abbr: w[4], terr: !!w[5], holder: w[6], status: w[7], snote: w[8], kind: '', sup: w[9] || '' }));
+  D.rows.forEach(r => N.set(r[0], { code: r[0], level: r[1], name: r[2], order: r[3], kind: r[4], status: r[5], snote: r[6], sup: r[7] || '' }));
+  // SCHEMA rule 5: a 0 segment is a tier the country does not have. It is never a row, so the
+  // register has no node for it -- but the tree has to pass through it, or every code beneath
+  // would be an orphan the page never reaches. These pass-through nodes are marked virtual and
+  // are never counted, listed, searched or drawn; only walked.
+  [...N.values()].forEach(n => {
+    let c = n.code, p = parentOf(c);
+    while (p != null && !N.has(p) && p.endsWith('.0')) {
+      N.set(p, { code: p, level: seg(p).length, name: '', order: 0, kind: '', status: '', snote: '', virtual: true });
+      c = p; p = parentOf(c);
+    }
+  });
+  const real = n => !n.virtual;
+  // A retired row still resolves and is still shown -- that is the whole point of superseding
+  // instead of deleting. It is simply not ground any more, so nothing counts it. (SCHEMA,
+  // Add-never-remove, 17 Sep.)
+  const live = n => !n.virtual && !n.sup;
+  let NREAL = 0; N.forEach(n => { if (live(n)) NREAL++; });
+  let NSUP = 0; N.forEach(n => { if (n.sup) NSUP++; });
+  N.forEach(n => { const p = parentOf(n.code); if (p == null) return; if (!kids.has(p)) kids.set(p, []); kids.get(p).push(n); });
+  kids.forEach(a => a.sort((x, y) => (x.order - y.order) || (parseInt(seg(x.code).pop()) - parseInt(seg(y.code).pop()))));
+  const K = c => kids.get(c) || [];
+  const KR = c => K(c).flatMap(k => k.virtual ? KR(k.code) : [k]);   // real children, seen through any skipped tiers
+  const continents = [...N.values()].filter(n => n.level === 1).sort((a, b) => a.order - b.order);
+  const l3of = c => seg(c).slice(0, 3).join('.');
+  const isTerr = c => { const t = N.get(l3of(c)); return !!(t && t.terr); };
+  const kindOf = c => seg(c).length < 3 ? seg(c).length === 1 ? 'continent' : 'region' : isTerr(c) ? 'territory' : 'country';
+  // the abbreviation is a display label, never a code segment (ruled 16 Sep). L3 rows carry their own;
+  // every row beneath shows its country's, dimmed, so a district can be read without climbing the tree.
+  const abbrTag = n => n.abbr ? '<span class="ab">' + esc(n.abbr) + '</span>'
+    : (seg(n.code).length > 3 && (N.get(l3of(n.code)) || {}).abbr) ? '<span class="ab inh" title="' + esc(N.get(l3of(n.code)).name) + '">' + esc(N.get(l3of(n.code)).abbr) + '</span>'
+    : '<span class="ab"></span>';
+
+  // selection lives in the data, so a row re-rendered by search or a reopened country keeps its tick
+  const SEL = new Set();
+  function tally() {
+    document.getElementById('selcount').textContent = SEL.size;
+    document.getElementById('selbar').classList.toggle('on', SEL.size > 0);
+  }
+  const byCode = (a, b) => { const A = a.split('.').map(Number), B = b.split('.').map(Number); for (let i = 0; i < Math.max(A.length, B.length); i++) { if ((A[i] ?? -1) !== (B[i] ?? -1)) return (A[i] ?? -1) - (B[i] ?? -1); } return 0; };
+  document.getElementById('copySel').addEventListener('click', () => {
+    navigator.clipboard?.writeText([...SEL].sort(byCode).join('\n')).catch(() => {});
+    const b = document.getElementById('copySel'), t = b.textContent; b.textContent = 'Copied ' + SEL.size; setTimeout(() => { b.textContent = t; }, 900);
+  });
+  document.getElementById('clearSel').addEventListener('click', () => {
+    SEL.clear(); document.querySelectorAll('.row input').forEach(cb => { cb.checked = false; cb.indeterminate = false; }); document.querySelectorAll('.row.sel').forEach(r => r.classList.remove('sel')); tally();
+  });
+
+  // A territory set is one thing on the map made of pieces that do not touch: Spain's set is the
+  // Canaries off Africa, Ceuta and Melilla on the Moroccan coast, and three rocks in between.
+  // Ruled 17 Sep: the L3 row is one checkbox and ticking it shows them all together; L4 carries a
+  // checkbox per territory, so the Canaries or the plazas can still be taken on their own.
+  const setOf = code => { const n = N.get(code); return (n && n.terr && seg(code).length === 3) ? KR(code).map(k => k.code) : null; };
+  function paint(code, on) {
+    document.querySelectorAll('.row[data-code="' + code + '"]').forEach(r => {
+      r.classList.toggle('sel', on);
+      const b = r.querySelector('input'); if (b) { b.checked = on; b.indeterminate = false; }
+    });
+  }
+  function tick(code, on) { if (on) SEL.add(code); else SEL.delete(code); paint(code, on); }
+  // the set's own box reads its pieces back: all ticked is checked, some ticked is indeterminate
+  function reflect(code) {
+    const kids = setOf(code); if (!kids || !kids.length) return;
+    const on = kids.filter(c => SEL.has(c)).length;
+    document.querySelectorAll('.row[data-code="' + code + '"] input').forEach(b => {
+      b.checked = on === kids.length; b.indeterminate = on > 0 && on < kids.length;
+    });
+    const whole = on === kids.length;
+    if (whole) SEL.add(code); else SEL.delete(code);
+    document.querySelectorAll('.row[data-code="' + code + '"]').forEach(r => r.classList.toggle('sel', on > 0));
+  }
+
+  // running number per level, in register order
+  const RUN = new Map(); const perLevel = {};
+  (function walk(list) { list.forEach(n => { if (live(n)) { perLevel[n.level] = (perLevel[n.level] || 0) + 1; RUN.set(n.code, perLevel[n.level]); } walk(K(n.code)); }); })(continents);
+
+  // descendants exactly at a level, memoised per (code, level)
+  const DESC = new Map();
+  function countAt(code, level) {
+    const key = code + '@' + level; if (DESC.has(key)) return DESC.get(key);
+    const d = seg(code).length; let n = 0;
+    if (d + 1 === level) n = K(code).filter(live).length;
+    else if (d + 1 < level) K(code).forEach(k => { n += countAt(k.code, level); });
+    DESC.set(key, n); return n;
+  }
+  function groupsAt(code, level) {           // parents one step above `level`, with their rows, under `code`
+    const out = [], d0 = seg(code).length;
+    (function w(c, trail) {
+      const ks = K(c); if (!ks.length) return;
+      if (seg(c).length + 1 === level) { const rows = ks.filter(real); if (rows.length) out.push({ pcode: c, trail, rows }); return; }
+      ks.forEach(k => w(k.code, trail.concat(k.virtual ? '— no tier —' : k.name)));
+    })(code, []);
+    return out;
+  }
+
+  // status: a field, inherited down the branch
+  function statusOf(code) {
+    let c = code;
+    for (;;) { const n = N.get(c); if (n && n.status) return { s: n.status, n: n.snote || n.name, own: c === code }; const p = parentOf(c); if (p == null) return null; c = p; }
+  }
+  // status tag, and the note written out -- on a touch screen a hover title is nothing at all
+  const statusTag = code => { const st = statusOf(code); if (!st) return '';
+    const note = st.own ? st.n : 'inside ' + st.n;
+    return '<span class="st st-' + st.s + (st.own ? '' : ' inh') + '">' + SLAB[st.s] + '</span><span class="sn">' + esc(note) + '</span>'; };
+  const holderName = h => h === 'Uk' ? 'UK' : h === 'Us' ? 'US' : h;
+  // who holds a territory set is a field on its L3 row; every row beneath shows it
+  const holdTag = code => { if (seg(code).length < 3 || !isTerr(code)) return ''; const t = N.get(l3of(code)); const h = t.holder || '';   // no holder: the status tag already says disputed / unclaimed
+    return h ? '<span class="hold">' + esc(holderName(h)) + '</span>' : ''; };
+
+  // sources: longest prefix override, else by depth; parents inherit the strictest beneath
+  const BYDEPTH = {}, OVER = [];
+  // An override row carries a prefix AND, usually, a depth. Both must match: a depth-7 line for
+  // Burundi says where Burundi's L7 came from, not where its L5 and L6 came from. Reading the
+  // prefix alone made one country's deepest source answer for its whole branch.
+  D.sources.forEach(s => { if (s[0]) OVER.push({ p: s[0], d: +s[1] || 0, src: s[2], lic: s[3] }); else if (s[1]) BYDEPTH[+s[1]] = { src: s[2], lic: s[3] }; });
+  function srcOwn(code) {
+    const L = seg(code).length;
+    let best = null;
+    OVER.forEach(o => {
+      if (code !== o.p && !code.startsWith(o.p + '.')) return;
+      if (o.d && o.d !== L) return;                       // depth given and not this level
+      if (!best || o.p.length > best.p.length || (o.p.length === best.p.length && o.d > best.d)) best = o;
+    });
+    if (best) return best;
+    return BYDEPTH[Math.min(L, 9)] || { src: '', lic: '' };
+  }
+  const SRC = new Map();
+  function srcOf(code) {
+    if (SRC.has(code)) return SRC.get(code);
+    const ks = K(code); let out;
+    if (!ks.length) { const o = srcOwn(code); out = { lic: o.lic, src: o.src, derived: false }; }
+    else { let worst = null, names = {}; ks.forEach(k => { const c = srcOf(k.code); if (c.src) names[c.src] = 1; if (c.lic && (!worst || (LICN[c.lic] || {rank:0}).rank > (LICN[worst] || {rank:0}).rank)) worst = c.lic; });
+           const list = Object.keys(names); out = { lic: worst || '', src: list.length === 1 ? list[0] : list.length + ' sources', derived: true }; }
+    SRC.set(code, out); return out;
+  }
+  function geoTag(code) {
+    const ks = KR(code);
+    if (!ks.length) return '<span class="geo g-file" title="holds its own boundary">KML ' + code + '.kml</span>';
+    if (ks.length === 1) return '<span class="geo g-copy" title="single child — same extent, no second trace">= ' + ks[0].code + '</span>';
+    return '<span class="geo g-union" title="outline derived by union, nothing stored">∪ ' + ks.length + '</span>';
+  }
+  const srcTag = code => { const s = srcOf(code); if (!s.lic || !LICN[s.lic]) return ''; const L = LICN[s.lic];
+    return '<span class="lic lic-' + s.lic + (s.derived ? ' inh' : '') + '" title="' + esc(s.src) + ' · ' + L.name + ' · you owe ' + L.owe + (s.derived ? ' · strictest licence beneath this node' : '') + '">' + L.name + '</span>'; };
+
+  // ---------- lede + ladder, from the data ----------
+  const l3 = [...N.values()].filter(n => n.level === 3);
+  const nCo = l3.filter(n => !n.terr).length, nTe = l3.filter(n => n.terr).length;
+  document.getElementById('lede').innerHTML = 'Nine levels, one list each, in the register’s own order: ' + plural(continents.length, 'continent') + ', '
+    + plural(perLevel[2] || 0, 'continental region') + ', ' + nCo + ' countries and ' + nTe + ' territory sets under them, and below that the tree keeps going where the ground does — '
+    + (perLevel[4] || 0).toLocaleString() + ' country regions, ' + (perLevel[5] || 0).toLocaleString() + ' provinces, <b>' + (perLevel[6] || 0).toLocaleString() + ' districts and municipalities</b>, '
+    + (perLevel[7] || 0).toLocaleString() + ' communes, ' + (perLevel[8] || 0).toLocaleString() + ' wards and sub-districts. ' + NREAL.toLocaleString() + ' codes in all, as of ' + esc(D.built) + '.'
+    + (NSUP ? ' ' + plural(NSUP, 'code') + ' retired: still resolving, no longer ground.' : '');
+  const ladder = document.getElementById('ladder');
+  const lsub = { 1: 'continents', 2: 'regions', 3: 'countries + sets', 4: 'country regions', 5: 'provinces', 6: 'districts', 7: 'communes', 8: 'wards', 9: 'settlements' };
+  for (let l = 1; l <= 9; l++) { const n = perLevel[l] || 0; const d = el(n ? '' : 'empty', '<b>L' + l + '</b><span>' + (n ? n.toLocaleString() : '—') + '</span><small>' + lsub[l] + '</small>'); ladder.appendChild(d); }
+
+  // ---------- rows ----------
+  function makeRow(n, cls, num, extra) {
+    const d = el('row ' + cls);
+    d.dataset.code = n.code; d.dataset.kind = kindOf(n.code); d.dataset.name = n.name.toLowerCase();
+    const st = statusOf(n.code); if (st) d.dataset.status = st.s;
+    if (n.sup) d.classList.add('sup');
+    if (srcOf(n.code).lic === 'odbl') d.classList.add('odbl-hit');
+    d.title = 'Click to copy ' + n.code;
+    d.innerHTML = '<span class="n">' + num + '</span><input type="checkbox" aria-label="' + esc(n.name) + '"' + (SEL.has(n.code) ? ' checked' : '') + '>' + abbrTag(n)
+      + '<span class="k">' + n.code + '</span><span class="v"><span class="lbl">' + esc(n.name) + '</span>' + statusTag(n.code)
+      + (n.sup ? '<span class="rt">retired → ' + esc(n.sup) + '</span><span class="sn">' + esc(n.snote || '') + '</span>' : '')
+      + (n.kind ? '<span class="ut">' + esc(n.kind) + '</span>' : '') + holdTag(n.code) + (extra || '') + '</span>' + geoTag(n.code) + srcTag(n.code);
+    if (SEL.has(n.code)) d.classList.add('sel');
+    const cb = d.querySelector('input');
+    cb.addEventListener('click', e => e.stopPropagation());
+    const pieces = setOf(n.code);
+    if (pieces) { cb.title = 'Takes the whole set — ' + pieces.length + ' territories at L4';
+      const on = pieces.filter(c => SEL.has(c)).length;
+      cb.checked = on === pieces.length && on > 0; cb.indeterminate = on > 0 && on < pieces.length;
+      d.classList.toggle('sel', on > 0); }
+    cb.addEventListener('change', e => {
+      const want = e.target.checked;
+      if (pieces) { tick(n.code, want); pieces.forEach(c => tick(c, want)); }
+      else { tick(n.code, want); const up = l3of(n.code); if (seg(n.code).length === 4 && setOf(up)) reflect(up); }
+      tally();
+    });
+    d.addEventListener('click', () => { navigator.clipboard?.writeText(n.code).then(() => { d.classList.add('copied'); setTimeout(() => d.classList.remove('copied'), 900); }).catch(() => {}); });
+    return d;
+  }
+  function header(cls, group, html) {
+    const h = document.createElement('div'); h.setAttribute('role', 'button'); h.tabIndex = 0; h.className = cls; h.innerHTML = html;
+    const tog = () => { group.classList.toggle('shut'); if (!group.classList.contains('shut') && group._fill) { group._fill(); group._fill = null; } };
+    h.addEventListener('click', tog); h.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(); } });
+    return h;
+  }
+  function level(code, name, count) {
+    const sec = el('level'); const head = document.createElement('button'); head.type = 'button'; head.className = 'lhead';
+    head.innerHTML = '<span class="lcode"><span class="car">▾</span> ' + code + '</span><span class="lname">' + name + '</span><span class="lcount">' + count + '</span>';
+    head.addEventListener('click', () => sec.classList.toggle('shut'));
+    sec.appendChild(head); const body = el('lbody'); sec.appendChild(body); return [sec, body];
+  }
+  const splitCT = (c, t, cw, tw) => [c ? plural(c, cw) : '', t ? plural(t, tw) : ''].filter(Boolean).join(' · ');
+  const pairAt = (list, level) => list.reduce((a, x) => { const n = countAt(x.code, level); return x.terr ? [a[0], a[1] + n] : [a[0] + n, a[1]]; }, [0, 0]);
+  const localIdx = n => parseInt(seg(n.code).pop());
+
+  host.textContent = '';   // the 'Reading the register…' line goes once the data is in hand
+
+  // ---------- L1 ----------
+  { const [sec, body] = level('L1', LNAME[1], continents.length); const g = el('cgroup');
+    continents.forEach((c, ci) => {
+      const regs = K(c.code), l3s = regs.flatMap(r => K(r.code));
+      const row = makeRow(c, 'l1', nn(localIdx(c), null), '<span class="meta">' + plural(regs.length, 'region') + ' · ' + plural(l3s.filter(x => !x.terr).length, 'country') + ' · ' + plural(l3s.filter(x => x.terr).length, 'territory set') + '</span>');
+      row.style.setProperty('--h', 'var(' + HUES[ci] + ')'); g.appendChild(row);
+    });
+    body.appendChild(g); host.appendChild(sec); }
+
+  // ---------- L2 ----------
+  { const [sec, body] = level('L2', LNAME[2], perLevel[2] || 0);
+    continents.forEach((c, ci) => {
+      const regs = K(c.code); const g = el('cgroup'); g.style.setProperty('--h', 'var(' + HUES[ci] + ')');
+      g.appendChild(header('chdr', g, '<span class="car">▼</span><span class="cn">' + c.code + '</span><span></span><span></span><span class="cname">' + esc(c.name) + '</span><span class="cmeta">' + plural(regs.length, 'region') + '</span>'));
+      const gb = el('cbody'); g.appendChild(gb);
+      regs.forEach(r => { const ks = K(r.code); const co = ks.filter(x => !x.terr).length, te = ks.filter(x => x.terr).length;
+        gb.appendChild(makeRow(r, 'ind', nn(localIdx(r), RUN.get(r.code)), '<span class="meta">' + plural(co, 'country') + (te ? ' · ' + plural(te, 'territory set') : '') + '</span>')); });
+      body.appendChild(g);
+    });
+    host.appendChild(sec); }
+
+  // ---------- L3 ----------
+  { const [sec, body] = level('L3', LNAME[3], splitCT(nCo, nTe, 'country', 'territory set'));
+    continents.forEach((c, ci) => {
+      const g = el('cgroup'); g.style.setProperty('--h', 'var(' + HUES[ci] + ')');
+      const l3s = K(c.code).flatMap(r => K(r.code));
+      g.appendChild(header('chdr', g, '<span class="car">▼</span><span class="cn">' + c.code + '</span><span></span><span></span><span class="cname">' + esc(c.name) + '</span><span class="cmeta">' + splitCT(l3s.filter(x => !x.terr).length, l3s.filter(x => x.terr).length, 'country', 'territory set') + '</span>'));
+      const gb = el('cbody'); g.appendChild(gb);
+      K(c.code).forEach(r => {
+        const ks = K(r.code), co = ks.filter(x => !x.terr), te = ks.filter(x => x.terr);
+        const rg = el('rgrp');
+        rg.appendChild(header('rhdr', rg, '<span class="car">▼</span><span class="rn">' + nn(localIdx(r), RUN.get(r.code)) + '</span><span></span><span></span><span class="rc">' + r.code + '</span><span class="rname">' + esc(r.name) + '</span><span class="rmeta">' + plural(co.length, 'country') + (te.length ? ' · ' + plural(te.length, 'territory set') : '') + '</span>'));
+        const rb = el('rbody'); rg.appendChild(rb);
+        co.forEach(x => rb.appendChild(makeRow(x, 'ind', nn(localIdx(x), RUN.get(x.code)))));
+        let last = null;
+        te.forEach(x => { const h = x.holder || (x.status === 'unclaimed' ? 'unclaimed' : 'disputed');
+          if (h !== last) { last = h; rb.appendChild(el('thdr', '<span class="tn">' + te.filter(y => (y.holder || (y.status === 'unclaimed' ? 'unclaimed' : 'disputed')) === h).length + '</span><span></span><span></span><span class="tw">' + esc(h) + '</span>')); }
+          const pcs = KR(x.code).length;
+          rb.appendChild(makeRow(x, 'ind terr', nn(localIdx(x), RUN.get(x.code)),
+            pcs ? '<span class="meta">' + plural(pcs, 'territory') + ' at L4</span>' : '')); });
+        gb.appendChild(rg);
+      });
+      body.appendChild(g);
+    });
+    host.appendChild(sec); }
+
+  // ---------- L4–L9: one engine, country bodies filled on open ----------
+  function deepLevel(L) {
+    const word = LWORD[L], all = pairAt(l3, L);
+    const [sec, body] = level('L' + L, LNAME[L], (all[0] + all[1]) ? splitCT(all[0], all[1], word, 'territory ' + word) : 'nothing entered yet');
+    if (!(all[0] + all[1])) { body.appendChild(el('lempty', L === 9 ? 'L9 is the settlement layer — 4.8 million names from national gazetteers and GeoNames, waiting on the network policy that currently refuses both.' : 'Nothing entered at this level yet.')); sec.classList.add('shut'); host.appendChild(sec); return; }
+    let wide = 0; N.forEach(n => { if (n.level === L && n.code.length > wide) wide = n.code.length; });
+    sec.style.setProperty('--kw', Math.min(Math.max(Math.round(wide * 6.7) + 8, 92), 160) + 'px');
+    continents.forEach((c, ci) => {
+      const cl3 = K(c.code).flatMap(r => K(r.code)), cp = pairAt(cl3, L);
+      if (!(cp[0] + cp[1])) return;
+      const g = el('cgroup shut'); g.style.setProperty('--h', 'var(' + HUES[ci] + ')');
+      g.appendChild(header('chdr', g, '<span class="car">▼</span><span class="cn">' + c.code + '</span><span></span><span></span><span class="cname">' + esc(c.name) + '</span><span class="cmeta">' + splitCT(cp[0], cp[1], word, 'territory ' + word) + '</span>'));
+      const gb = el('cbody'); g.appendChild(gb);
+      K(c.code).forEach(r => {
+        const rp = pairAt(K(r.code), L); if (!(rp[0] + rp[1])) return;
+        const rg = el('rgrp');
+        rg.appendChild(header('rhdr', rg, '<span class="car">▼</span><span class="rn">' + nn(localIdx(r), RUN.get(r.code)) + '</span><span></span><span></span><span class="rc">' + r.code + '</span><span class="rname">' + esc(r.name) + '</span><span class="rmeta">' + splitCT(rp[0], rp[1], word, 'territory ' + word) + '</span>'));
+        const rb = el('rbody'); rg.appendChild(rb);
+        K(r.code).forEach(x => {
+          const cnt = countAt(x.code, L); if (!cnt) return;
+          const kg = el('kgrp shut'); kg.dataset.kind = x.terr ? 'territory' : 'country';
+          kg.appendChild(header('khdr ' + (x.terr ? 'kterr' : 'kco'), kg, '<span class="car">▼</span><span class="kn">' + nn(localIdx(x), RUN.get(x.code)) + '</span><span></span><span class="ab">' + esc(x.abbr || '') + '</span><span class="kc">' + x.code + '</span><span class="kname' + (x.terr ? ' isterr' : '') + '" data-hold="' + esc(x.terr ? 'territory · ' + holderName(x.holder || x.status || '') : '') + '">' + esc(x.name) + '</span><span class="kmeta">' + cnt.toLocaleString() + '</span>'));
+          const kb = el('kbody'); kg.appendChild(kb);
+          kg._fill = () => { groupsAt(x.code, L).forEach(gr => {
+            kb.appendChild(el('phdr', '<span></span><span></span><span></span><span class="pw">' + gr.trail.map(esc).join(' › ') + ' <b>· ' + gr.pcode + '</b></span>'));
+            gr.rows.forEach(fx => kb.appendChild(makeRow(fx, 'sub', nn(localIdx(fx), RUN.get(fx.code))))); }); };
+          rb.appendChild(kg);
+        });
+        gb.appendChild(rg);
+      });
+      body.appendChild(g);
+    });
+    host.appendChild(sec);
+  }
+  for (let L = 4; L <= 9; L++) deepLevel(L);
+  const LEVELS = [...document.querySelectorAll('.level')];
+
+  // ---------- flat list ----------
+  const flatbody = document.getElementById('flatbody');
+  continents.forEach((c, ci) => K(c.code).forEach(r => K(r.code).forEach(x => {
+    const tr = document.createElement('tr'); tr.style.setProperty('--h', 'var(' + HUES[ci] + ')'); tr.dataset.kind = x.terr ? 'territory' : 'country';
+    tr.innerHTML = '<td class="d">' + RUN.get(x.code) + '</td><td class="c">' + x.code + '</td><td>' + esc(x.name) + '</td><td class="d">' + (x.terr ? esc(x.holder || x.status || '—') : '—') + '</td><td class="d">' + esc(r.name) + '</td><td class="d">' + esc(c.name) + '</td>';
+    flatbody.appendChild(tr);
+  })));
+
+  // ---------- search, over the data, into a results list ----------
+  const q = document.getElementById('q'), found = document.getElementById('found'), results = document.getElementById('results');
+  let ONLY = '', CONTESTED = false;
+  function trailOf(code) { const out = []; let p = parentOf(code); while (p) { const n = N.get(p); if (n) out.unshift(n.virtual ? { name: '— no tier —', code: n.code } : n); p = parentOf(p); } return out; }
+  function search() {
+    const term = q.value.trim().toLowerCase();
+    const filtering = term || ONLY || CONTESTED;
+    if (!filtering) { results.classList.add('hide'); LEVELS.forEach(s => s.classList.remove('hide')); document.querySelectorAll('.kgrp, .cgroup, .rgrp, .row.ind, .row.sub').forEach(x => x.classList.remove('hide')); found.textContent = ''; return; }
+    const hits = [];
+    for (const n of N.values()) {
+      if (n.virtual) continue;
+      if (n.level < 3 && !term) continue;
+      const kind = kindOf(n.code);
+      if (ONLY && kind !== ONLY && n.level >= 3) continue;
+      if (CONTESTED && !statusOf(n.code)) continue;
+      if (term && !(n.name.toLowerCase().includes(term) || n.code.startsWith(term) || (n.abbr && n.abbr.toLowerCase() === term))) continue;
+      hits.push(n); if (hits.length > 4000) break;
+    }
+    hits.sort((a, b) => a.level - b.level || (a.name.toLowerCase().startsWith(term) ? -1 : 1) - (b.name.toLowerCase().startsWith(term) ? -1 : 1));
+    LEVELS.forEach(s => s.classList.add('hide'));
+    results.classList.remove('hide'); results.innerHTML = '';
+    const shown = hits.slice(0, 400);
+    results.appendChild(el('rhead', shown.length.toLocaleString() + (hits.length > shown.length ? ' of ' + (hits.length > 4000 ? '4,000+' : hits.length.toLocaleString()) : '') + ' rows' + (term ? ' matching “' + esc(q.value.trim()) + '”' : '') + (ONLY ? ' · ' + ONLY + ' only' : '') + (CONTESTED ? ' · contested' : '')));
+    let wide = 0; shown.forEach(n => { if (n.code.length > wide) wide = n.code.length; }); results.style.setProperty('--kw', Math.min(Math.max(Math.round(wide * 6.7) + 8, 92), 160) + 'px');
+    shown.forEach(n => {
+      const ci = parseInt(seg(n.code)[0]) - 1; const tr = trailOf(n.code);
+      const row = makeRow(n, 'res', nn(localIdx(n), null), '<div class="trail">L' + n.level + ' · ' + tr.map(t => esc(t.name)).join(' › ') + (tr.length ? ' <b>· ' + esc(tr[tr.length - 1].code) + '</b>' : '') + '</div>');
+      row.style.setProperty('--h', 'var(' + (HUES[ci] || '--c1') + ')');
+      if (term) row.querySelector('.lbl').innerHTML = mark(n.name, term);
+      results.appendChild(row);
+    });
+    if (hits.length > shown.length) results.appendChild(el('more', 'Showing the first 400. Narrow the search, or type more of the code.'));
+    found.textContent = (hits.length > 4000 ? '4,000+' : hits.length.toLocaleString()) + ' found';
+  }
+  function mark(text, term) { const i = text.toLowerCase().indexOf(term); if (i < 0) return esc(text); return esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + term.length)) + '</mark>' + esc(text.slice(i + term.length)); }
+  let t; q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(search, 120); });
+  document.querySelectorAll('.seg .btn').forEach(b => b.addEventListener('click', () => { ONLY = b.dataset.only; document.querySelectorAll('.seg .btn').forEach(x => x.setAttribute('aria-pressed', String(x === b))); search(); }));
+  { const cb = document.getElementById('contested'); cb.addEventListener('click', () => { CONTESTED = cb.getAttribute('aria-pressed') !== 'true'; cb.setAttribute('aria-pressed', String(CONTESTED)); search(); }); }
+
+  // ---------- geometry toggle ----------
+  { const gb = document.getElementById('geoBtn'), note = document.getElementById('note');
+    let leaves = 0, copies = 0; N.forEach(n => { if (n.virtual) return; const k = KR(n.code).length; if (!k) leaves++; else if (k === 1) copies++; });
+    gb.addEventListener('click', () => { const on = gb.getAttribute('aria-pressed') !== 'true'; gb.setAttribute('aria-pressed', String(on)); document.body.classList.toggle('geomode', on);
+      if (on) { document.body.classList.remove('licmode'); document.getElementById('licBtn').setAttribute('aria-pressed', 'false'); }
+      note.textContent = on ? leaves.toLocaleString() + ' nodes hold their own file · ' + copies.toLocaleString() + ' inherit a single child’s line · every other outline is a union' : ''; }); }
+
+  // ---------- sources toggle ----------
+  { const lb = document.getElementById('licBtn'), note = document.getElementById('note');
+    const tally = {}; N.forEach(n => { if (!n.virtual && !K(n.code).length) { const s = srcOf(n.code); if (s.lic) tally[s.lic] = (tally[s.lic] || 0) + 1; } });
+    const line = Object.keys(LICN).filter(k => tally[k]).map(k => tally[k].toLocaleString() + ' ' + LICN[k].name).join(' · ');
+    lb.addEventListener('click', () => { const on = lb.getAttribute('aria-pressed') !== 'true'; lb.setAttribute('aria-pressed', String(on)); document.body.classList.toggle('licmode', on);
+      if (on) { document.body.classList.remove('geomode'); document.getElementById('geoBtn').setAttribute('aria-pressed', 'false'); }
+      note.textContent = on ? 'leaves by licence: ' + line + ' · dashed = strictest licence beneath, not its own' : ''; }); }
+
+  // ---------- drop ODbL: the open ruling, priced rather than argued with ----------
+  { const ob = document.getElementById('odblBtn'), note = document.getElementById('note');
+    let dark = 0; N.forEach(n => { if (!n.virtual && srcOf(n.code).lic === 'odbl') dark++; });
+    ob.addEventListener('click', () => { const on = ob.getAttribute('aria-pressed') !== 'true'; ob.setAttribute('aria-pressed', String(on)); document.body.classList.toggle('dropodbl', on);
+      note.textContent = on ? dark.toLocaleString() + ' rows go dark if you refuse ODbL — the tree still stands complete above them' : ''; }); }
+
+  // ---------- collapse / flat ----------
+  const toggleAll = document.getElementById('toggleAll');
+  toggleAll.addEventListener('click', () => { const shut = toggleAll.textContent === 'Collapse all'; LEVELS.forEach(s => s.classList.toggle('shut', shut)); toggleAll.textContent = shut ? 'Expand all' : 'Collapse all'; });
+  { const fb = document.getElementById('flatBtn'), fw = document.getElementById('flatwrap');
+    fb.addEventListener('click', () => { const on = fb.getAttribute('aria-pressed') !== 'true'; fb.setAttribute('aria-pressed', String(on)); fw.classList.toggle('hide', !on); host.classList.toggle('hide', on); if (on) results.classList.add('hide'); else search(); }); }
+
+  // deep link: #3.6.5 opens the search on that code
+  if (location.hash.length > 1) { q.value = decodeURIComponent(location.hash.slice(1)); search(); }
+})();
+</script>
+
+</body></html>
