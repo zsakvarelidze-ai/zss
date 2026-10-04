@@ -308,7 +308,7 @@
   let D;
   try {
     host.innerHTML = '<div class="loading">Loading the register…</div>';
-    const resp = await fetch('data/register.json?v=2026-10-04i');
+    const resp = await fetch('data/register.json?v=2026-10-04j');
     if (!resp.ok) throw new Error('data/register.json answered ' + resp.status);
     D = await resp.json();
     if (D.compact) {          // rows grouped by country, codes relative, level implied, blanks trimmed
