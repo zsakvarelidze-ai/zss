@@ -255,7 +255,7 @@ footer{color:var(--muted);font-size:12.5px;margin-top:32px;border-top:1px solid 
   <div class="split" style="margin-bottom:18px">
     <section style="margin:0"><h2>Where the rows are</h2><div class="bars" id="levels"></div>
       <p class="note" style="margin-top:14px">L6 is the register's centre of gravity. L9 arrived in one
-      run and is already the second largest level, from seventeen countries of a possible 135; the tiers beneath the municipality are now filled from GeoNames in ten more (3 Oct 2026).</p></section>
+      run and is already the second largest level, from seventeen countries of a possible 135; the tiers beneath the municipality are now filled from GeoNames in 34 more (3–4 Oct 2026).</p></section>
     <section style="margin:0"><h2>Where the data comes from</h2><div class="bars" id="lic"></div>
       <p class="note" style="margin-top:14px">Share-alike reaches a minority of rows, in 49 of 272
       files, and ten countries hold 72% of it. A licence question about &ldquo;the register&rdquo; was
@@ -266,7 +266,7 @@ footer{color:var(--muted);font-size:12.5px;margin-top:32px;border-top:1px solid 
       <thead><tr><th>country</th><th>rows</th><th>entered</th><th>its own law</th></tr></thead>
       <tbody id="top"></tbody></table></div></section>
   <section><h2>What is not here</h2><div class="cols">
-    <p><b>Settlements stop at 114,145.</b> That is the whole gazetteer we can reach; the full
+    <p><b>Settlements stop at 114,145. Beneath them, 4,783,467 settlements sit as points in <code>places/</code> — not rows, not ground: each is placed under the deepest register row its admin codes resolve to, from GeoNames (CC BY 4.0).</b> That is the whole gazetteer we can reach; the full
     4.8-million-place dump is not obtainable from here. 64,300 are placed, about 65,000 remain.</p>
     <p><b>No geometry.</b> The register stores none, by design: an outline is derived from its source
     when something needs drawing, never stored as truth. These maps are drawn from the sources, not
@@ -422,7 +422,7 @@ files are not published.
 </footer>
 </div>
 
-<script src="data/site.js?v=2026-10-04j"></script>
+<script src="data/site.js?v=2026-10-04p"></script>
 <script>
 const D = window.__ZSSDATA__, fmt = n => n.toLocaleString('en-US'), st = D.st;
 /* Units arrive as [codeSuffix, name, path] in the build that has a size ceiling to respect.
@@ -1012,7 +1012,7 @@ function drawFaults(){
 
 <script>window.ZSS_BUILD="2026-09-23g";</script>
 <script src="lib/leaflet.js"></script>
-<script src="tiles.js?v=2026-10-04j"></script>
+<script src="tiles.js?v=2026-10-04p"></script>
 
 </body>
 </html>
