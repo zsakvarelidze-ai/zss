@@ -1,0 +1,1 @@
+ZSS.places({"code":"4.3.16","places":[["4.3.16",1,"Vatican City",41.90268,12.45414,"PPLC"]]});

@@ -19,6 +19,7 @@
      Country files are classic scripts, not fetch(): a page opened from file://
      is refused every fetch by CORS, while a script tag beside it still loads. */
   var WORLD = null, ENV = null, ENVS = {}, BR = {}, pending = {}, NAME = {};
+  var OWN = {}, ownGrp = null, ownTried = {};      // hand-traced settlement outlines, data/own/<country>.js
   // Envelope width is a display choice. '' is twelve nautical miles -- the territorial sea, a line
   // with a meaning. '100' is a hundred kilometres: a drawing, and the page says so. The 'outline'
   // mode draws each row as ONE closed shape, land and sea and islands inside a single outer line,
@@ -129,8 +130,26 @@
       d.units.forEach(function (u) { NAME[u.c] = u.n; });
       var f = pending[d.code]; delete pending[d.code]; if (f) f(d);
     },
-    load: function () {}                 // the old one-file-per-country shape; no longer read
+    load: function () {},                // the old one-file-per-country shape; no longer read
+    // traced outlines (geometry/own in the register): licence own, asserted, drawn in their own stroke
+    own: function (d) { OWN[d.code] = d; if (curCode === d.code) drawOwn(d.code); }
   };
+  function drawOwn(country) {
+    if (ownGrp) { map.removeLayer(ownGrp); ownGrp = null; }
+    var d = OWN[country];
+    if (!d) {
+      if (ownTried[country]) return; ownTried[country] = true;
+      var s = document.createElement('script'); s.src = 'data/own/' + country + '.js' + V; s.onerror = function () {}; document.head.appendChild(s); return;
+    }
+    ownGrp = L.layerGroup(d.units.reduce(function (acc, u) {
+      unwrap(u.r.map(ringPts)).forEach(function (pts) {
+        var q = L.polygon(pts, { renderer: rend, color: '#ff7a59', weight: 2, dashArray: '6 4', opacity: .95, fillColor: '#ff7a59', fillOpacity: .12, interactive: true });
+        q.bindTooltip(u.n + ' \u00b7 ' + u.c + ' \u00b7 traced outline (own)', { sticky: true, className: 'ttip' });
+        acc.push(q);
+      });
+      return acc;
+    }, [])).addTo(map);
+  }
   function wantBranch(code, cb) {
     if (BR[code]) { cb(BR[code]); return; }
     if (pending[code]) { var prev = pending[code]; pending[code] = function (d) { prev(d); cb(d); }; return; }
@@ -592,6 +611,7 @@
   function clearBranch() {
     [brGrp, outGrp, ptGrp].forEach(function (g) { if (g && map.hasLayer(g)) map.removeLayer(g); });   // ptGrp may be detached below PT_ZOOM
     brGrp = outGrp = ptGrp = null;
+    if (ownGrp && !curCode) { map.removeLayer(ownGrp); ownGrp = null; }
   }
 
   function openBranch(parent, keepView) {
@@ -647,6 +667,7 @@
       });
     });
     brGrp = L.layerGroup(shapes).addTo(map);
+    drawOwn(country);
 
     // the parent's own outline, so the children read as pieces of something. At the top of the
     // country it is the world layer's outline -- the same union the world map draws.
@@ -741,6 +762,7 @@
         });
         return acc;
       }, [])).addTo(map);
+    if (curCode) drawOwn(curCode);
       curParent = country; curLevel = Lv;
       map.fitBounds(L.latLngBounds([meta.bbox[1], meta.bbox[0]], [meta.bbox[3], meta.bbox[2]]), { padding: [22, 22] });
       document.getElementById('dtitle').textContent = (D.cname[meta.iso] || meta.name) + ' — L' + Lv;

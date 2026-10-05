@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZSS Trace — settlement outlines</title>
+<link rel="stylesheet" href="lib/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css">
+<style>
+  :root { --bg: #0b0f12; --panel: #141a1f; --ink: #e6ebe8; --dim: #8a978f; --line: #2a343a; --accent: #35f0a0; --warn: #f0b23a; --own: #ff7a59; --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace; --sans: "IBM Plex Sans", system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 13px/1.45 var(--sans); display: grid; grid-template-rows: auto 1fr; }
+  header { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header .mark { font: 700 15px/1 var(--mono); letter-spacing: .12em; }
+  header .mark span { color: var(--dim); font-weight: 400; margin-left: 8px; letter-spacing: .04em; }
+  header a { color: var(--dim); text-decoration: none; font-size: 12px; }
+  header a:hover { color: var(--accent); }
+  .status { margin-left: auto; font: 11px var(--mono); color: var(--dim); }
+  main { display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+  @media (max-width: 820px) { main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; } aside { max-height: 45vh; } }
+  #map { min-height: 0; background: #000; }
+  aside { border-left: 1px solid var(--line); background: var(--panel); overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+  h2 { margin: 0; font: 600 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .card { border: 1px solid var(--line); padding: 10px; display: grid; gap: 8px; }
+  label { display: grid; gap: 3px; font-size: 11px; color: var(--dim); }
+  input, select, textarea, button { font: 13px var(--sans); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 6px 8px; }
+  textarea { min-height: 48px; resize: vertical; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #05120c; border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 auto; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .hint { font-size: 11px; color: var(--dim); margin: 0; }
+  .list { max-height: 220px; overflow: auto; border: 1px solid var(--line); }
+  .list div { padding: 5px 8px; border-bottom: 1px solid var(--line); cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+  .list div:hover { background: #1b242a; }
+  .list div.has { color: var(--own); }
+  .list .mono { color: var(--dim); font-size: 11px; }
+  .pill { display: inline-block; font: 600 9px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 3px 5px; border: 1px solid var(--line); border-radius: 2px; }
+  .leaflet-container { font: inherit; }
+  .lbl { background: rgba(11,15,18,.75); color: var(--ink); border: 0; border-radius: 2px; padding: 1px 5px; font: 11px var(--mono); white-space: nowrap; }
+  .leaflet-control-attribution { font-size: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="mark">ZSS<span>trace</span></div>
+  <a href="index.html">Atlas</a>
+  <a href="layers.html">Layers</a>
+  <a id="back-country" href="country.html">Country</a>
+  <span class="status" id="status">starting…</span>
+</header>
+<main>
+  <div id="map"></div>
+  <aside>
+    <div class="card">
+      <h2>Where to save</h2>
+      <div class="row"><button id="pick">Choose the register folder</button><button id="forget" title="Forget the folder">×</button></div>
+      <p class="hint" id="folder-hint">Pick <b>ZSS FILES\register</b> once. Every finished outline is then written to <span class="mono">geometry/own/&lt;code&gt;.geojson</span> and the ones already there are drawn as neighbours. Without a folder, Save gives you a file to download.</p>
+    </div>
+    <div class="card">
+      <h2>Settlement</h2>
+      <label>Country code <input id="cc" class="mono" placeholder="3.6.5"></label>
+      <label>Find <input id="q" placeholder="name or code"></label>
+      <div class="row"><button id="places-btn" title="Add the GeoNames settlements of this country as amber points (code at L9, provisional until the outline is saved)">Load GeoNames places</button></div>
+      <div class="list" id="list"></div>
+      <p class="hint">Green: register rows with a point. Amber: GeoNames places — their code is written at L9, parent + 0 for each skipped tier + n, and becomes a register row when the outline is saved. Orange: already outlined. Or click anywhere on the map with nothing selected and the outline is saved under the parent you type.</p>
+    </div>
+    <div class="card">
+      <h2>Outline</h2>
+      <div id="sel" class="mono">nothing selected</div>
+      <label>Code <input id="code" class="mono" placeholder="3.6.5.2.2.6.1.0.12 — L9 for a settlement"></label>
+      <label>Name <input id="name"></label>
+      <label>Your initials <input id="who" class="mono" maxlength="6" placeholder="ZS"></label>
+      <label>Note <textarea id="note" placeholder="what the edge follows — built-up limit, fence line, river…"></textarea></label>
+      <div class="row"><button id="draw" class="primary">Draw</button><button id="edit">Edit</button><button id="clear">Discard</button></div>
+      <div class="row"><button id="save" class="primary" disabled>Save to folder</button><button id="dl" disabled>Download .geojson</button></div>
+      <p class="hint">Click to add vertices, click the first vertex to close. Vertices snap to a neighbour's edge so two outlines never overlap or leave a sliver. Saved with the imagery name, zoom, date and initials; licence <span class="mono">own</span>, status asserted.</p>
+    </div>
+    <div class="card">
+      <h2>Basemap</h2>
+      <div class="row"><button data-base="sat" aria-pressed="true">Satellite</button><button data-base="osm" aria-pressed="false">OpenStreetMap</button><button data-base="topo" aria-pressed="false">Topo</button></div>
+      <label><input type="checkbox" id="labels" checked> place labels over imagery</label>
+    </div>
+  </aside>
+</main>
+
+<script src="lib/leaflet.js"></script>
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js"></script>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const status = t => { $('status').textContent = t; };
+  const qs = new URLSearchParams(location.search);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  // ---- map
+  const map = L.map('map', { zoomControl: true, worldCopyJump: true }).setView([42.0, 43.5], 7);
+  const bases = {
+    sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' }),
+    osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }),
+    topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenTopoMap (CC-BY-SA)' }),
+  };
+  const labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, opacity: .9 });
+  let baseName = 'sat'; bases.sat.addTo(map); labels.addTo(map);
+  document.querySelectorAll('[data-base]').forEach(b => b.onclick = () => { map.removeLayer(bases[baseName]); baseName = b.dataset.base; bases[baseName].addTo(map); bases[baseName].bringToBack(); document.querySelectorAll('[data-base]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); });
+  $('labels').onchange = e => e.target.checked ? labels.addTo(map) : map.removeLayer(labels);
+  const neighbours = L.featureGroup().addTo(map);      // outlines already saved
+  const points = L.layerGroup().addTo(map);            // settlement points of the country
+  let work = null;                                      // the polygon being drawn or edited
+  const PM = !!map.pm;
+  if (!PM) status('drawing tools did not load (unpkg.com unreachable) — the map and the list still work');
+  if (PM) map.pm.setGlobalOptions({ snappable: true, snapDistance: 14, allowSelfIntersection: false, templineStyle: { color: '#35f0a0' }, hintlineStyle: { color: '#35f0a0', dashArray: '4 4' }, pathOptions: { color: '#35f0a0', weight: 2, fillOpacity: .12 } });
+
+  // ---- folder (File System Access), remembered in IndexedDB
+  let dirHandle = null;
+  const idb = { get: () => new Promise(r => { const o = indexedDB.open('zss-trace', 1); o.onupgradeneeded = () => o.result.createObjectStore('kv'); o.onsuccess = () => { const t = o.result.transaction('kv').objectStore('kv').get('dir'); t.onsuccess = () => r(t.result || null); t.onerror = () => r(null); }; o.onerror = () => r(null); }),
+                set: v => new Promise(r => { const o = indexedDB.open('zss-trace', 1); o.onupgradeneeded = () => o.result.createObjectStore('kv'); o.onsuccess = () => { const t = o.result.transaction('kv', 'readwrite'); if (v) t.objectStore('kv').put(v, 'dir'); else t.objectStore('kv').delete('dir'); t.oncomplete = () => r(); }; o.onerror = () => r(); }) };
+  async function ownDir(create) {
+    if (!dirHandle) return null;
+    const g = await dirHandle.getDirectoryHandle('geometry', { create }); return g.getDirectoryHandle('own', { create });
+  }
+  async function useFolder(h) {
+    dirHandle = h; $('folder-hint').innerHTML = 'Saving into <b>' + esc(h.name) + '</b>/geometry/own/. ' + '<span id="nb"></span>'; $('save').disabled = !work;
+    await loadNeighbours();
+  }
+  $('pick').onclick = async () => {
+    if (!window.showDirectoryPicker) { status('this browser cannot open folders — use Download'); return; }
+    try { const h = await window.showDirectoryPicker({ mode: 'readwrite', id: 'zss-register' }); await idb.set(h); await useFolder(h); } catch (e) { if (e.name !== 'AbortError') status('folder: ' + e.message); }
+  };
+  $('forget').onclick = async () => { dirHandle = null; await idb.set(null); $('folder-hint').textContent = 'No folder chosen. Save gives a file to download.'; neighbours.clearLayers(); };
+  (async () => { const h = await idb.get(); if (!h) return; try { const p = await h.queryPermission({ mode: 'readwrite' }); if (p === 'granted') await useFolder(h); else { $('folder-hint').innerHTML = 'Folder <b>' + esc(h.name) + '</b> remembered — click <i>Choose the register folder</i> to reconnect it (the browser asks once per visit).'; $('pick').onclick = async () => { try { if (await h.requestPermission({ mode: 'readwrite' }) === 'granted') await useFolder(h); } catch (e) { status('folder: ' + e.message); } }; } } catch (e) {} })();
+
+  const saved = new Map();   // code -> feature (from folder)
+  async function loadNeighbours() {
+    neighbours.clearLayers(); saved.clear();
+    let own; try { own = await ownDir(false); } catch (e) { $('nb').textContent = 'no geometry/own yet — created on first save.'; return; }
+    let n = 0;
+    for await (const [name, h] of own.entries()) {
+      if (!name.endsWith('.geojson')) continue;
+      try { const f = await h.getFile(); const gj = JSON.parse(await f.text()); const feats = gj.type === 'FeatureCollection' ? gj.features : [gj];
+        for (const ft of feats) { const code = (ft.properties || {}).code || name.replace(/\.geojson$/, ''); saved.set(code, ft);
+          const lyr = L.geoJSON(ft, { style: { color: '#ff7a59', weight: 1.5, fillOpacity: .08, dashArray: '' }, pmIgnore: false }).addTo(neighbours);
+          lyr.bindTooltip((ft.properties || {}).name || code, { className: 'lbl', sticky: true });
+          lyr.on('click', () => { if (!work) { selectCode(code, (ft.properties || {}).name || ''); status('existing outline ' + code + ' — Edit to change it, Draw to replace'); } });
+          n++; }
+      } catch (e) {}
+    }
+    $('nb').textContent = n + ' outline' + (n === 1 ? '' : 's') + ' already in the folder, drawn in orange.'; renderList();
+  }
+
+  // ---- country points: data/pts/<cc>.js (register rows with a point) and, on request,
+  //      data/places/<cc>.js (GeoNames settlements under their parent, code = parent.n, provisional)
+  let pts = [], placesLoaded = false;
+  window.ZSS = {
+    pts: d => { pts = pts.filter(p => p.kind === 'place').concat((d.pts || []).map(p => ({ code: p[0], name: p[1], lat: p[2], lon: p[3], kind: 'row' }))); after(d.code + ': ' + pts.length + ' points'); },
+    places: d => { placesLoaded = true; pts = pts.concat((d.places || []).map(p => ({ code: p[0] + '.0'.repeat(Math.max(0, 8 - p[0].split('.').length)) + '.' + p[1], name: p[2], lat: p[3], lon: p[4], kind: 'place', fcode: p[5] }))); after(d.code + ': ' + pts.length + ' points incl. GeoNames places'); }
+  };
+  function after(msg) { drawPoints(); renderList(); status(msg); if (!qs.get('lat') && pts.length && !fitted) { fitted = true; map.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lon])).pad(0.05)); } }
+  let fitted = false;
+  function loadScript(src, onerr) { const s = document.createElement('script'); s.src = src; s.onerror = onerr; document.head.appendChild(s); }
+  function loadCountry(cc) {
+    if (!/^\d+\.\d+\.\d+$/.test(cc)) return;
+    $('back-country').href = 'country.html?code=' + cc; pts = []; placesLoaded = false; fitted = false; points.clearLayers();
+    loadScript('data/pts/' + cc + '.js', () => status('no register points for ' + cc + ' — try GeoNames places, or type a code and draw'));
+  }
+  $('places-btn').onclick = () => { const cc = $('cc').value.trim(); if (!cc || placesLoaded) return; loadScript('data/places/' + cc + '.js', () => status('no places file for ' + cc + ' (countries over 30,000 places are not on the site)')); };
+  function drawPoints() {
+    points.clearLayers();
+    if (pts.length > 6000 && map.getZoom() < 11) { status(pts.length + ' points — zoom in to see them'); return; }
+    const b = map.getBounds().pad(0.3);
+    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { radius: p.kind === 'place' ? 3 : 4, color: saved.has(p.code) ? '#ff7a59' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: 1.5, fillOpacity: .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code, { className: 'lbl', direction: 'top' }); m.on('click', () => { selectCode(p.code, p.name); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
+  }
+  function renderList() {
+    const q = $('q').value.trim().toLowerCase(); const box = $('list'); box.innerHTML = '';
+    const hits = pts.filter(p => !q || p.name.toLowerCase().includes(q) || p.code.includes(q)).slice(0, 200);
+    for (const p of hits) { const d = document.createElement('div'); if (saved.has(p.code)) d.className = 'has'; d.innerHTML = '<span>' + esc(p.name) + (p.kind === 'place' ? ' <span class="pill">place</span>' : '') + '</span><span class="mono">' + p.code + '</span>'; d.onclick = () => { selectCode(p.code, p.name); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }; box.appendChild(d); }
+    if (!hits.length) box.innerHTML = '<div style="cursor:default;color:var(--dim)">' + (pts.length ? 'no match' : 'enter a country code above, or a code and a point by hand') + '</div>';
+  }
+  $('q').oninput = renderList;
+  map.on('moveend', () => { if (pts.length > 6000) drawPoints(); });
+  $('cc').onchange = e => { pts = []; points.clearLayers(); loadCountry(e.target.value.trim()); };
+
+  // ---- selection and the working polygon
+  let sel = null;
+  function selectCode(code, name) { sel = { code, name }; $('code').value = code; $('name').value = name || ''; $('sel').textContent = code + (name ? ' · ' + name : ''); }
+  function setWork(layer) {
+    if (work && work !== layer) map.removeLayer(work);
+    work = layer; $('save').disabled = !(work && dirHandle); $('dl').disabled = !work;
+    if (work) { work.setStyle({ color: '#35f0a0', weight: 2, fillOpacity: .12 }); work.on('pm:edit', () => status('edited — Save when done')); }
+  }
+  $('draw').onclick = () => { if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; } if (work) { map.removeLayer(work); work = null; } map.pm.enableDraw('Polygon', { snappable: true, finishOn: 'click' }); status('click vertices; click the first one to close'); };
+  map.on('pm:create', e => { map.pm.disableDraw(); setWork(e.layer); status('outline closed — check it, then Save'); });
+  $('edit').onclick = () => { if (work) { if (work.pm) work.pm.enable({ allowSelfIntersection: false, snappable: true }); status('drag vertices; click the midpoint of an edge to add one'); return; } const code = $('code').value.trim(); const ft = saved.get(code); if (!ft) { status('nothing to edit — draw first, or select an orange outline'); return; } const lyr = L.geoJSON(ft).getLayers()[0]; lyr.addTo(map); setWork(lyr); if (lyr.pm) lyr.pm.enable({ allowSelfIntersection: false, snappable: true }); status('editing the saved outline of ' + code); };
+  $('clear').onclick = () => { if (PM) map.pm.disableDraw(); if (work) { map.removeLayer(work); work = null; } $('save').disabled = true; $('dl').disabled = true; status('discarded'); };
+  $('who').value = localStorage.getItem('zss.trace.who') || ''; $('who').onchange = e => localStorage.setItem('zss.trace.who', e.target.value.trim().toUpperCase());
+
+  function feature() {
+    const code = $('code').value.trim(); if (!code) { status('give the outline a code'); return null; }
+    if (!/^\d+(\.\d+)+$/.test(code)) { status('a code is digits and dots: 3.6.5.1.2.3.4.0.12'); return null; }
+    if (!work) { status('nothing drawn'); return null; }
+    const gj = work.toGeoJSON(); if (work.pm) work.pm.disable();
+    const ring = gj.geometry.coordinates[0]; if (!ring || ring.length < 4) { status('the outline needs at least three vertices'); return null; }
+    gj.properties = { code, name: $('name').value.trim(), level: code.split('.').length, licence: 'own', status: 'asserted', kind: 'settlement outline',
+      source: 'ZSS, traced by hand over ' + (baseName === 'sat' ? 'Esri World Imagery' : baseName === 'osm' ? 'OpenStreetMap' : 'OpenTopoMap'),
+      traced_at: new Date().toISOString().slice(0, 10), zoom: map.getZoom(), by: ($('who').value || '').toUpperCase() || null, note: $('note').value.trim() || null,
+      vertices: ring.length - 1, replaces: saved.has(code) ? (saved.get(code).properties || {}).traced_at || true : null };
+    return { type: 'FeatureCollection', features: [gj] };
+  }
+  $('save').onclick = async () => {
+    const fc = feature(); if (!fc) return;
+    try { const own = await ownDir(true); const code = fc.features[0].properties.code; const fh = await own.getFileHandle(code + '.geojson', { create: true }); const w = await fh.createWritable(); await w.write(JSON.stringify(fc, null, 1)); await w.close();
+      status('saved geometry/own/' + code + '.geojson'); map.removeLayer(work); work = null; $('save').disabled = true; $('dl').disabled = true; $('note').value = ''; await loadNeighbours(); drawPoints(); }
+    catch (e) { status('not saved: ' + e.message); }
+  };
+  $('dl').onclick = () => { const fc = feature(); if (!fc) return; const code = fc.features[0].properties.code; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(fc, null, 1)], { type: 'application/geo+json' })); a.download = code + '.geojson'; a.click(); status('downloaded ' + code + '.geojson — drop it in the chat or in geometry/own/'); };
+
+  // ---- entry from the URL
+  const cc = qs.get('cc') || (qs.get('code') || '').split('.').slice(0, 3).join('.');
+  if (cc) { $('cc').value = cc; loadCountry(cc); }
+  if (qs.get('code')) selectCode(qs.get('code'), qs.get('name') || '');
+  if (qs.get('lat') && qs.get('lon')) map.setView([+qs.get('lat'), +qs.get('lon')], +(qs.get('z') || 15));
+  else if (!cc) status('enter a country code, or open this page from a country');
+})();
+</script>
+</body>
+</html>

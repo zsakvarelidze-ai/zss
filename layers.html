@@ -1,5 +1,5 @@
 <!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
-<div style="max-width:1180px;margin:0 auto;padding:10px 16px 0;font:13px ui-monospace,Menlo,Consolas,monospace"><a href="index.html" style="color:inherit;opacity:.7;text-decoration:none">&larr; ZSS world register: atlas, register, faults</a></div>
+<div style="max-width:1180px;margin:0 auto;padding:10px 16px 0;font:13px ui-monospace,Menlo,Consolas,monospace"><a href="index.html" style="color:inherit;opacity:.7;text-decoration:none">&larr; ZSS world register: atlas, register, faults</a> atlas, register, faults</a>nbsp;·atlas, register, faults</a>nbsp; <a href="draw.html" style="color:inherit;opacity:.7;text-decoration:none">Trace outlines</a></div>
 
 <title>ZSS · Layers L1–L9</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap">
@@ -308,7 +308,7 @@
   let D;
   try {
     host.innerHTML = '<div class="loading">Loading the register…</div>';
-    const resp = await fetch('data/register.json?v=2026-10-04p');
+    const resp = await fetch('data/register.json?v=2026-10-05q');
     if (!resp.ok) throw new Error('data/register.json answered ' + resp.status);
     D = await resp.json();
     if (D.compact) {          // rows grouped by country, codes relative, level implied, blanks trimmed
