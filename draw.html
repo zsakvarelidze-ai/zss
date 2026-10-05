@@ -75,6 +75,7 @@
       <label>Code <input id="code" class="mono" placeholder="3.6.5.2.2.6.1.0.12 — L9 for a settlement"></label>
       <label>Name <input id="name"></label>
       <label>Your initials <input id="who" class="mono" maxlength="6" placeholder="ZS"></label>
+      <label>Traced from <select id="basis"><option value="imagery">the imagery (built-up edge)</option><option value="napr">NAPR's settlement-boundary layer (maps.gov.ge, working version), followed on the imagery</option><option value="other">another map (say which in the note)</option></select></label>
       <label>Note <textarea id="note" placeholder="what the edge follows — built-up limit, fence line, river…"></textarea></label>
       <div class="row"><button id="draw" class="primary">Draw</button><button id="edit">Edit</button><button id="clear">Discard</button></div>
       <div class="row"><button id="save" class="primary" disabled>Save to folder</button><button id="dl" disabled>Download .geojson</button></div>
@@ -192,7 +193,7 @@
     work = layer; $('save').disabled = !(work && dirHandle); $('dl').disabled = !work;
     if (work) { work.setStyle({ color: '#35f0a0', weight: 2, fillOpacity: .12 }); work.on('pm:edit', () => status('edited — Save when done')); }
   }
-  $('draw').onclick = () => { if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; } if (work) { map.removeLayer(work); work = null; } map.pm.enableDraw('Polygon', { snappable: true, finishOn: 'click' }); status('click vertices; click the first one to close'); };
+  $('draw').onclick = () => { if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; } if (work) { map.removeLayer(work); work = null; } map.pm.enableDraw('Polygon', { snappable: true, finishOn: null }); status('click vertices; click the first vertex to close (double-click also finishes)'); };
   map.on('pm:create', e => { map.pm.disableDraw(); setWork(e.layer); status('outline closed — check it, then Save'); });
   $('edit').onclick = () => { if (work) { if (work.pm) work.pm.enable({ allowSelfIntersection: false, snappable: true }); status('drag vertices; click the midpoint of an edge to add one'); return; } const code = $('code').value.trim(); const ft = saved.get(code); if (!ft) { status('nothing to edit — draw first, or select an orange outline'); return; } const lyr = L.geoJSON(ft).getLayers()[0]; lyr.addTo(map); setWork(lyr); if (lyr.pm) lyr.pm.enable({ allowSelfIntersection: false, snappable: true }); status('editing the saved outline of ' + code); };
   $('clear').onclick = () => { if (PM) map.pm.disableDraw(); if (work) { map.removeLayer(work); work = null; } $('save').disabled = true; $('dl').disabled = true; status('discarded'); };
@@ -205,7 +206,8 @@
     const gj = work.toGeoJSON(); if (work.pm) work.pm.disable();
     const ring = gj.geometry.coordinates[0]; if (!ring || ring.length < 4) { status('the outline needs at least three vertices'); return null; }
     gj.properties = { code, name: $('name').value.trim(), level: code.split('.').length, licence: 'own', status: 'asserted', kind: 'settlement outline',
-      source: 'ZSS, traced by hand over ' + (baseName === 'sat' ? 'Esri World Imagery' : baseName === 'osm' ? 'OpenStreetMap' : 'OpenTopoMap'),
+      source: ($('basis').value === 'napr' ? 'ZSS, traced by hand following the NAPR settlement-boundary layer (maps.gov.ge, working version) over ' : $('basis').value === 'other' ? 'ZSS, traced by hand from another map over ' : 'ZSS, traced by hand over ') + (baseName === 'sat' ? 'Esri World Imagery' : baseName === 'osm' ? 'OpenStreetMap' : 'OpenTopoMap'),
+      basis: $('basis').value,
       traced_at: new Date().toISOString().slice(0, 10), zoom: map.getZoom(), by: ($('who').value || '').toUpperCase() || null, note: $('note').value.trim() || null,
       vertices: ring.length - 1, replaces: saved.has(code) ? (saved.get(code).properties || {}).traced_at || true : null };
     return { type: 'FeatureCollection', features: [gj] };
