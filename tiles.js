@@ -650,21 +650,22 @@
       var rr = unwrap(u.r.map(ringPts));
       var ub = boundsOf(rr);
       if (ub && (ub.getEast() - ub.getWest()) < 90) frame = frame ? frame.extend(ub) : ub;
-      rr.forEach(function (pts) {
-        var p = L.polygon(pts, {
-          // on a screen the parts are lit edges in the hue, tinted faintly in their own colour
-          renderer: rend, color: screen() ? SCREEN[THEME].hue : (many ? col : 'rgba(255,255,255,.55)'), weight: d.level >= 7 ? .7 : (screen() ? .8 : 1.1), opacity: screen() ? .8 : .95,
-          fillColor: fill, fillOpacity: (screen() ? .22 : (many ? .38 : .5)) * op, interactive: true
-        });
-        p.zss = u;
-        p.on('click', function (e) {
-          L.DomEvent.stop(e);
-          if (deep || this.zss.leaf) { showUnit(this.zss, d.level, d); markUnit(this); }
-          else openBranch(this.zss.c);
-        });
-        p.bindTooltip(u.n + ' · ' + u.c + (u.leaf && !deep ? ' · nothing below' : ''), { sticky: true });
-        shapes.push(p);
+      // one shape per unit, all its rings together, filled even-odd: a ring inside another is a hole
+      // (an enclave such as Madrid or Kyiv, a lake), separate rings are separate parts (islands)
+      if (!rr.length) return;
+      var p = L.polygon(rr, {
+        // on a screen the parts are lit edges in the hue, tinted faintly in their own colour
+        renderer: rend, color: screen() ? SCREEN[THEME].hue : (many ? col : 'rgba(255,255,255,.55)'), weight: d.level >= 7 ? .7 : (screen() ? .8 : 1.1), opacity: screen() ? .8 : .95,
+        fillColor: fill, fillOpacity: (screen() ? .22 : (many ? .38 : .5)) * op, fillRule: 'evenodd', interactive: true
       });
+      p.zss = u;
+      p.on('click', function (e) {
+        L.DomEvent.stop(e);
+        if (deep || this.zss.leaf) { showUnit(this.zss, d.level, d); markUnit(this); }
+        else openBranch(this.zss.c);
+      });
+      p.bindTooltip(u.n + ' · ' + u.c + (u.leaf && !deep ? ' · nothing below' : ''), { sticky: true });
+      shapes.push(p);
     });
     brGrp = L.layerGroup(shapes).addTo(map);
     drawOwn(country);
@@ -752,14 +753,14 @@
       worldGrp.clearLayers(); clearBranch();
       var op = (Number(document.getElementById('uop').value) || 100) / 100, col = levelColor(Lv);
       brGrp = L.layerGroup(units.reduce(function (acc, u) {
-        unwrap(u.r.map(ringPts)).forEach(function (pts) {
-          var p = L.polygon(pts, { renderer: rend, color: col, weight: Lv >= 7 ? .6 : 1, opacity: .9,
-            fillColor: col, fillOpacity: .35 * op, interactive: true });
-          p.zss = u;
-          p.on('click', function (e) { L.DomEvent.stop(e); if (Lv < meta.deepest) openBranch(this.zss.c); else { showUnit(this.zss, Lv, null); markUnit(this); } });
-          p.bindTooltip(u.n + ' · ' + u.c, { sticky: true });
-          acc.push(p);
-        });
+        var rr = unwrap(u.r.map(ringPts));
+        if (!rr.length) return acc;
+        var p = L.polygon(rr, { renderer: rend, color: col, weight: Lv >= 7 ? .6 : 1, opacity: .9,
+          fillColor: col, fillOpacity: .35 * op, fillRule: 'evenodd', interactive: true });
+        p.zss = u;
+        p.on('click', function (e) { L.DomEvent.stop(e); if (Lv < meta.deepest) openBranch(this.zss.c); else { showUnit(this.zss, Lv, null); markUnit(this); } });
+        p.bindTooltip(u.n + ' · ' + u.c, { sticky: true });
+        acc.push(p);
         return acc;
       }, [])).addTo(map);
     if (curCode) drawOwn(curCode);
