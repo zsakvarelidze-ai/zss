@@ -144,7 +144,7 @@
     ownGrp = L.layerGroup(d.units.reduce(function (acc, u) {
       unwrap(u.r.map(ringPts)).forEach(function (pts) {
         var q = L.polygon(pts, { renderer: rend, color: '#ff7a59', weight: 2, dashArray: '6 4', opacity: .95, fillColor: '#ff7a59', fillOpacity: .12, interactive: true });
-        q.bindTooltip(u.n + ' \u00b7 ' + u.c + ' \u00b7 traced outline (own)', { sticky: true, className: 'ttip' });
+        q.bindTooltip(u.n + ' \u00b7 ' + u.c + (u.b === 'osm' ? ' \u00b7 derived outline (OpenStreetMap, ODbL)' : ' \u00b7 traced outline (own)'), { sticky: true, className: 'ttip' });
         acc.push(q);
       });
       return acc;
