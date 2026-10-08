@@ -111,6 +111,7 @@
   $('labels').onchange = e => e.target.checked ? labels.addTo(map) : map.removeLayer(labels);
   const neighbours = L.featureGroup().addTo(map);      // outlines already saved
   const points = L.layerGroup().addTo(map);            // settlement points of the country
+  const selMark = L.layerGroup().addTo(map);           // ring on the selected settlement, always shown
   let work = null;                                      // the polygon being drawn or edited
   const PM = !!map.pm;
   if (!PM) status('drawing tools did not load (unpkg.com unreachable) — the map and the list still work');
@@ -160,7 +161,7 @@
     pts: d => { pts = pts.filter(p => p.kind === 'place').concat((d.pts || []).map(p => ({ code: p[0], name: p[1], lat: p[2], lon: p[3], kind: 'row' }))); after(d.code + ': ' + pts.length + ' points'); },
     places: d => { placesLoaded = true; pts = pts.concat((d.places || []).map(p => ({ code: p[0] + '.0'.repeat(Math.max(0, 8 - p[0].split('.').length)) + '.' + p[1], name: p[2], lat: p[3], lon: p[4], kind: 'place', fcode: p[5] }))); after(d.code + ': ' + pts.length + ' points incl. GeoNames places'); }
   };
-  function after(msg) { drawPoints(); renderList(); status(msg); if (!qs.get('lat') && pts.length && !fitted) { fitted = true; map.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lon])).pad(0.05)); } }
+  function after(msg) { drawPoints(); setTimeout(() => { map.invalidateSize(); drawPoints(); }, 50); renderList(); status(msg); if (!qs.get('lat') && pts.length && !fitted) { fitted = true; map.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lon])).pad(0.05)); } }
   let fitted = false;
   function loadScript(src, onerr) { const s = document.createElement('script'); s.src = src; s.onerror = onerr; document.head.appendChild(s); }
   function loadCountry(cc) {
@@ -173,12 +174,12 @@
     points.clearLayers();
     if (pts.length > 6000 && map.getZoom() < 11) { status(pts.length + ' points — zoom in to see them'); return; }
     const b = map.getBounds().pad(0.3);
-    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { radius: p.kind === 'place' ? 3 : 4, color: saved.has(p.code) ? '#ff7a59' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: 1.5, fillOpacity: .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code, { className: 'lbl', direction: 'top' }); m.on('click', () => { selectCode(p.code, p.name); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
+    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { radius: p.kind === 'place' ? 3 : 4, color: saved.has(p.code) ? '#ff7a59' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: 1.5, fillOpacity: .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code, { className: 'lbl', direction: 'top' }); m.on('click', () => { selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
   }
   function renderList() {
     const q = $('q').value.trim().toLowerCase(); const box = $('list'); box.innerHTML = '';
     const hits = pts.filter(p => !q || p.name.toLowerCase().includes(q) || p.code.includes(q)).slice(0, 200);
-    for (const p of hits) { const d = document.createElement('div'); if (saved.has(p.code)) d.className = 'has'; d.innerHTML = '<span>' + esc(p.name) + (p.kind === 'place' ? ' <span class="pill">place</span>' : '') + '</span><span class="mono">' + p.code + '</span>'; d.onclick = () => { selectCode(p.code, p.name); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }; box.appendChild(d); }
+    for (const p of hits) { const d = document.createElement('div'); if (saved.has(p.code)) d.className = 'has'; d.innerHTML = '<span>' + esc(p.name) + (p.kind === 'place' ? ' <span class="pill">place</span>' : '') + '</span><span class="mono">' + p.code + '</span>'; d.onclick = () => { selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }; box.appendChild(d); }
     if (!hits.length) box.innerHTML = '<div style="cursor:default;color:var(--dim)">' + (pts.length ? 'no match' : 'enter a country code above, or a code and a point by hand') + '</div>';
   }
   $('q').oninput = renderList;
@@ -187,7 +188,8 @@
 
   // ---- selection and the working polygon
   let sel = null;
-  function selectCode(code, name) { sel = { code, name }; $('code').value = code; $('name').value = name || ''; $('sel').textContent = code + (name ? ' · ' + name : ''); }
+  function markSel(lat, lon) { selMark.clearLayers(); if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) return; L.circleMarker([lat, lon], { radius: 9, color: '#ffffff', weight: 2.5, fill: false, pmIgnore: true, interactive: false }).addTo(selMark); L.circleMarker([lat, lon], { radius: 4, color: '#f0b23a', weight: 1.5, fillOpacity: .9, pmIgnore: true, interactive: false }).addTo(selMark); }
+  function selectCode(code, name, lat, lon) { sel = { code, name }; markSel(lat, lon); $('code').value = code; $('name').value = name || ''; $('sel').textContent = code + (name ? ' · ' + name : ''); }
   function setWork(layer) {
     if (work && work !== layer) map.removeLayer(work);
     work = layer; $('save').disabled = !(work && dirHandle); $('dl').disabled = !work;
@@ -223,7 +225,7 @@
   // ---- entry from the URL
   const cc = qs.get('cc') || (qs.get('code') || '').split('.').slice(0, 3).join('.');
   if (cc) { $('cc').value = cc; loadCountry(cc); }
-  if (qs.get('code')) selectCode(qs.get('code'), qs.get('name') || '');
+  if (qs.get('code')) selectCode(qs.get('code'), qs.get('name') || '', qs.get('lat') ? +qs.get('lat') : null, qs.get('lon') ? +qs.get('lon') : null);
   if (qs.get('lat') && qs.get('lon')) map.setView([+qs.get('lat'), +qs.get('lon')], +(qs.get('z') || 15));
   else if (!cc) status('enter a country code, or open this page from a country');
 })();
