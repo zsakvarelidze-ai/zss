@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#2A4C9C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ZSS">
+<title>ZSS</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- locked / first-run screens -->
+<section id="gate" class="gate" hidden>
+  <div class="card">
+    <div class="brand"><span class="logo">ZSS</span><span class="muted">Personal + Holdings</span></div>
+
+    <div id="g-unlock" hidden>
+      <h1>Locked</h1>
+      <p class="muted">Your records are encrypted on this device. Enter your passphrase to open them.</p>
+      <form id="f-unlock" class="stack" autocomplete="off">
+        <label class="f"><span>Passphrase</span><input id="u-pass" type="password" autocomplete="current-password" required></label>
+        <button class="btn primary" type="submit">Unlock</button>
+        <p id="u-msg" class="msg" role="status"></p>
+      </form>
+      <details class="small">
+        <summary>Forgot it?</summary>
+        <p>Nobody can open these records without the passphrase, not even me. If you have a backup file and remember the passphrase it was made with, you can erase this device and restore from it.</p>
+        <button class="btn" type="button" data-act="restore-new">Restore from a backup file</button>
+        <button class="btn danger" type="button" data-act="erase">Erase this device…</button>
+      </details>
+    </div>
+
+    <div id="g-setup" hidden>
+      <h1>Set up this device</h1>
+      <p class="muted">Everything you enter is kept on this device only, encrypted with a passphrase you choose. Nothing is sent anywhere.</p>
+      <div class="choice">
+        <button class="btn primary" type="button" data-act="show-new">Start fresh</button>
+        <button class="btn" type="button" data-act="restore-new">Restore from a backup file</button>
+      </div>
+    </div>
+
+    <form id="f-new" class="stack" autocomplete="off" hidden>
+      <h1>Choose a passphrase</h1>
+      <p class="muted">At least 12 characters. A few unrelated words work well. <b>There is no way to recover it</b>: keep it in your password manager or written down somewhere safe.</p>
+      <label class="f"><span>Passphrase</span><input id="n-pass" type="password" autocomplete="new-password" minlength="12" required></label>
+      <label class="f"><span>Type it again</span><input id="n-pass2" type="password" autocomplete="new-password" minlength="12" required></label>
+      <div class="meter"><i id="n-meter"></i></div>
+      <button class="btn primary" type="submit">Create</button>
+      <button class="btn link" type="button" data-act="back">Back</button>
+      <p id="n-msg" class="msg" role="status"></p>
+    </form>
+
+    <form id="f-restore" class="stack" autocomplete="off" hidden>
+      <h1>Restore from a backup</h1>
+      <p class="muted">Pick the backup file (<code>zss-backup-….json</code>) and enter the passphrase it was made with.</p>
+      <label class="f"><span>Backup file</span><input id="r-file" type="file" accept=".json,.zssbak,application/json" required></label>
+      <label class="f"><span>Passphrase of that backup</span><input id="r-pass" type="password" autocomplete="off" required></label>
+      <button class="btn primary" type="submit">Restore</button>
+      <button class="btn link" type="button" data-act="back">Back</button>
+      <p id="r-msg" class="msg" role="status"></p>
+    </form>
+
+    <p class="foot muted">Works without internet. Encrypted with AES-256 on this device.</p>
+  </div>
+</section>
+
+<!-- the app -->
+<section id="app" class="app" hidden>
+  <header class="top">
+    <span class="logo">ZSS</span>
+    <div class="seg" role="group" aria-label="Side">
+      <button type="button" data-side="personal" aria-pressed="false"><i></i>Personal</button>
+      <button type="button" data-side="holdings" aria-pressed="false"><i></i>Business</button>
+      <button type="button" data-side="docs" aria-pressed="false"><i></i>Documents</button>
+      <button type="button" data-side="pw" aria-pressed="false"><i></i>Passwords</button>
+    </div>
+    <span class="grow"></span>
+    <button type="button" class="chip" id="bk-chip" data-act="settings" title="Backups">No backup yet</button>
+    <button type="button" class="icon" data-act="settings" title="Settings and backups" aria-label="Settings and backups">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+    <button type="button" class="icon" data-act="lock" title="Lock now" aria-label="Lock now">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>
+    </button>
+  </header>
+  <div class="stage" id="stage">
+    <div class="view" id="v-docs" hidden><div class="vwrap">
+      <div class="vhead"><div><span class="eyebrow">Encrypted on this device</span><h2>Documents &amp; photos</h2></div>
+        <div class="row">
+          <label class="btn primary">Add files<input type="file" id="d-add" multiple hidden></label>
+          <label class="btn">Take a photo<input type="file" id="d-cam" accept="image/*" capture="environment" hidden></label>
+        </div></div>
+      <div class="tools">
+        <div class="seg small" id="d-side" role="group" aria-label="Side"><button type="button" data-v="all">All</button><button type="button" data-v="personal">Personal</button><button type="button" data-v="holdings">Business</button></div>
+        <select id="d-cat" aria-label="Kind"></select>
+        <input type="search" id="d-q" placeholder="Search names and notes" aria-label="Search">
+      </div>
+      <div class="banner" id="d-missing" hidden><span id="d-missing-n"></span> listed but not on this device yet. <button class="btn sm" type="button" data-act="files-restore">Restore from a documents backup…</button> <button class="btn sm" type="button" data-act="files-folder">…or from your backup folder</button></div>
+      <p class="muted small" id="d-sum"></p>
+      <div class="dgrid" id="d-grid"></div>
+      <p class="muted small">Drop files here, or use Add files. New files go to the side you are filtering on (Personal when showing all). Each file is encrypted with its own key before it is stored.</p>
+    </div></div>
+    <div class="view" id="v-pw" hidden><div class="vwrap">
+      <div class="vhead"><div><span class="eyebrow">A second lock</span><h2>Passwords</h2></div>
+        <div class="row" id="pw-acts" hidden><button class="btn primary" type="button" data-act="pw-add">Add a login</button><button class="btn" type="button" data-act="pw-lock">Lock passwords</button></div></div>
+      <form id="pw-setup" class="stack narrow" autocomplete="off" hidden>
+        <p>Passwords get their own passphrase, different from the one that opens the app, so one slip never opens both. Like the app's, it cannot be recovered.</p>
+        <label class="f"><span>Passwords passphrase (12+ characters)</span><input id="pws-p1" type="password" autocomplete="new-password" minlength="12" required></label>
+        <label class="f"><span>Type it again</span><input id="pws-p2" type="password" autocomplete="new-password" minlength="12" required></label>
+        <button class="btn primary" type="submit">Set up passwords</button>
+        <p id="pws-msg" class="msg" role="status"></p>
+      </form>
+      <form id="pw-unlock" class="stack narrow" autocomplete="off" hidden>
+        <p class="muted">Locked separately. They lock again after 3 minutes, when you switch away, or when you leave this tab.</p>
+        <label class="f"><span>Passwords passphrase</span><input id="pwu-pass" type="password" autocomplete="off" required></label>
+        <button class="btn primary" type="submit">Open passwords</button>
+        <p id="pwu-msg" class="msg" role="status"></p>
+      </form>
+      <div id="pw-open" hidden>
+        <div class="tools">
+          <div class="seg small" id="pw-side" role="group" aria-label="Side"><button type="button" data-v="all">All</button><button type="button" data-v="personal">Personal</button><button type="button" data-v="holdings">Business</button></div>
+          <input type="search" id="pw-q" placeholder="Search" aria-label="Search">
+        </div>
+        <p class="muted small" id="pw-sum"></p>
+        <div class="pwlist" id="pw-list"></div>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<!-- settings -->
+<dialog id="dlg" class="dlg" aria-labelledby="dlg-h">
+  <div class="dh"><h2 id="dlg-h">Settings and backups</h2><button class="icon" type="button" data-act="close" aria-label="Close">✕</button></div>
+  <div class="db">
+    <section>
+      <h3>Backups</h3>
+      <p class="muted small">A backup is one encrypted file. It opens only with your passphrase, so it is safe to keep in OneDrive, Google Drive or on a USB stick.</p>
+      <div class="kv"><span>Last backup</span><b id="s-last">never</b></div>
+      <div id="s-folder-wrap">
+        <div class="kv"><span>Automatic backup folder</span><b id="s-folder">not chosen</b></div>
+        <p class="muted small">Pick a folder inside OneDrive and every change is saved there within a minute, plus one file per day. That copy also leaves the device.</p>
+        <div class="row"><button class="btn" type="button" data-act="folder">Choose folder…</button><button class="btn" type="button" data-act="folder-perm" id="b-perm" hidden>Allow writing to it</button></div>
+      </div>
+      <p id="s-nofolder" class="muted small" hidden>This browser can't save to a folder on its own. Use “Save a backup file” now and then, and keep the file in iCloud Drive or OneDrive.</p>
+      <div class="row"><button class="btn primary" type="button" data-act="export">Save a backup file</button><button class="btn" type="button" data-act="restore">Restore from a backup file…</button></div>
+    </section>
+    <section>
+      <h3>Documents backup</h3>
+      <p class="muted small">Documents are backed up apart from the records, because they are big. With a backup folder chosen, each new document is copied there on its own (folder <code>zss-documents</code>). A documents backup only opens together with your records backup and its passphrase.</p>
+      <div class="kv"><span>On this device</span><b id="s-files">0 files</b></div>
+      <div class="kv"><span>Last documents backup</span><b id="s-flast">never</b></div>
+      <div class="row"><button class="btn" type="button" data-act="files-export">Save a documents backup file</button><button class="btn" type="button" data-act="files-restore">Restore documents from a file…</button><button class="btn" type="button" data-act="files-folder" id="b-ffolder">…from a backup folder</button></div>
+      <input type="file" id="d-restore-file" accept=".zssfiles" hidden>
+    </section>
+    <section>
+      <h3>Snapshots on this device</h3>
+      <p class="muted small">Taken automatically each day before the first change, and before every restore. Kept: the last 20.</p>
+      <ul id="s-snaps" class="snaps"></ul>
+      <div class="row"><button class="btn" type="button" data-act="snap">Take a snapshot now</button></div>
+    </section>
+    <section>
+      <h3>Security</h3>
+      <label class="f inline"><span>Lock after</span>
+        <select id="s-idle"><option value="5">5 minutes idle</option><option value="10">10 minutes idle</option><option value="15">15 minutes idle</option><option value="30">30 minutes idle</option></select></label>
+      <div class="row"><button class="btn" type="button" data-act="chpass">Change passphrase…</button></div>
+      <form id="f-chpass" class="stack" autocomplete="off" hidden>
+        <label class="f"><span>Current passphrase</span><input id="c-old" type="password" autocomplete="current-password" required></label>
+        <label class="f"><span>New passphrase (12+ characters)</span><input id="c-new" type="password" autocomplete="new-password" minlength="12" required></label>
+        <label class="f"><span>New passphrase again</span><input id="c-new2" type="password" autocomplete="new-password" minlength="12" required></label>
+        <button class="btn primary" type="submit">Change it</button>
+        <p class="muted small">Backup files you made before keep the old passphrase.</p>
+        <p id="c-msg" class="msg" role="status"></p>
+      </form>
+      <p class="muted small" id="s-persist"></p>
+    </section>
+    <section>
+      <h3>About you</h3>
+      <p class="muted small">Used on the family tree and the study prompt. Kept encrypted with everything else.</p>
+      <label class="f"><span>Your name</span><input id="p-name" type="text" autocomplete="off"></label>
+      <label class="f"><span>About you (one paragraph)</span><textarea id="p-about" rows="3"></textarea></label>
+      <div class="row"><button class="btn" type="button" data-act="profile">Save</button><span id="p-msg" class="msg"></span></div>
+    </section>
+    <section>
+      <h3>This device</h3>
+      <div class="row"><button class="btn danger" type="button" data-act="erase">Erase everything on this device…</button></div>
+      <p class="muted small" id="s-ver"></p>
+    </section>
+  </div>
+</dialog>
+
+<dialog id="dv" class="dlg wide" aria-labelledby="dv-h">
+  <div class="dh"><h2 id="dv-h">Document</h2><button class="icon" type="button" data-act="dv-close" aria-label="Close">✕</button></div>
+  <div class="db">
+    <div class="prev" id="dv-prev"></div>
+    <p class="muted small" id="dv-info"></p>
+    <div class="grid2">
+      <label class="f"><span>Name</span><input id="dv-name" type="text" autocomplete="off"></label>
+      <label class="f"><span>Kind</span><select id="dv-cat"></select></label>
+      <label class="f"><span>Side</span><select id="dv-side"><option value="personal">Personal</option><option value="holdings">Business</option></select></label>
+      <label class="f"><span>Date on the document</span><input id="dv-date" type="date"></label>
+    </div>
+    <label class="f"><span>Note</span><textarea id="dv-note" rows="2" placeholder="e.g. expires 2029, original in the safe"></textarea></label>
+    <div class="row"><button class="btn primary" type="button" data-act="dv-save">Save</button><button class="btn" type="button" data-act="dv-open">Open</button><button class="btn" type="button" data-act="dv-copy">Save a copy</button><span class="grow"></span><button class="btn danger" type="button" data-act="dv-del">Delete</button></div>
+  </div>
+</dialog>
+
+<dialog id="pwd" class="dlg" aria-labelledby="pe-h">
+  <div class="dh"><h2 id="pe-h">Login</h2><button class="icon" type="button" data-act="pe-close" aria-label="Close">✕</button></div>
+  <form class="db stack" id="pe-form" autocomplete="off">
+    <label class="f"><span>Name</span><input id="pe-title" type="text" placeholder="e.g. Chase, Gmail, EFTPS"></label>
+    <label class="f"><span>Website</span><input id="pe-url" type="text" inputmode="url" placeholder="chase.com"></label>
+    <label class="f"><span>Username or email</span><input id="pe-user" type="text" autocomplete="off"></label>
+    <label class="f"><span>Password</span><span class="pwin"><input id="pe-pass" type="password" autocomplete="new-password"><button class="btn sm" type="button" id="pe-show">Show</button><button class="btn sm" type="button" id="pe-gen">New strong one</button><button class="btn sm" type="button" id="pe-copy">Copy</button></span></label>
+    <div class="meter"><i id="pe-meter"></i></div>
+    <label class="f"><span>Side</span><select id="pe-side"><option value="personal">Personal</option><option value="holdings">Business</option></select></label>
+    <label class="f"><span>Notes (security questions, recovery phone…)</span><textarea id="pe-notes" rows="3"></textarea></label>
+    <p class="muted small" id="pe-meta"></p>
+    <div class="row"><button class="btn primary" type="submit">Save</button><span class="grow"></span><button class="btn danger" type="button" id="pe-del">Delete</button></div>
+  </form>
+</dialog>
+
+<div id="toast" role="status"></div>
+<script src="app.js"></script>
+</body>
+</html>
