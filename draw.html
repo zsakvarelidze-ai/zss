@@ -84,6 +84,7 @@
     <div class="card">
       <h2>Outline</h2>
       <div id="sel" class="mono">nothing selected</div>
+      <label>Edit a municipality or district <select id="admsel"><option value="">— pick one to move its border —</option></select></label>
       <label>Code <input id="code" class="mono" placeholder="3.6.5.2.2.6.1.0.12 — L9 for a settlement"></label>
       <label>Name <input id="name"></label>
       <label>Your initials <input id="who" class="mono" maxlength="6" placeholder="ZS"></label>
@@ -138,7 +139,32 @@
       if (u.b && L_ >= 5) L.marker([(u.b[1] + u.b[3]) / 2, (u.b[0] + u.b[2]) / 2], { interactive: false, keyboard: false, pmIgnore: true,
         icon: L.divIcon({ className: 'nm' + (L_ === 5 ? ' r' : L_ >= 7 ? ' d' : ''), html: u.n, iconSize: null }) }).addTo(namGrp);
     }));
-    syncLayers();
+    syncLayers(); fillPicker();
+  }
+  function unitByCode(code) { for (const d of Object.values(BR)) for (const u of d.units) if (u.c === code) return { u, level: d.level }; return null; }
+  function fillPicker() {
+    const sel = $('admsel'), keep = sel.value, items = [];
+    Object.values(BR).forEach(d => { if (d.level >= 6) d.units.forEach(u => items.push([d.level, u.c, u.n, (unitByCode(d.code) || {}).u])); });
+    items.sort((a, b) => a[0] - b[0] || a[2].localeCompare(b[2]));
+    sel.innerHTML = '<option value="">— pick one to move its border —</option>' + items.map(([L_, c, n, up]) =>
+      '<option value="' + c + '">' + esc(n) + (L_ === 6 ? '' : L_ === 7 ? ' (Tbilisi district)' : ' (part of ' + esc(up ? up.n : '') + ')') + (up && L_ === 6 ? ' · ' + esc(up.n) : '') + '</option>').join('');
+    sel.value = keep;
+  }
+  function unitLayer(code) {
+    const hit = unitByCode(code); if (!hit) return null;
+    const rings = hit.u.r.map(ringLL);
+    return { layer: L.polygon(rings.length === 1 ? rings[0] : rings), name: hit.u.n, level: hit.level };
+  }
+  function editUnit(code) {
+    if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; }
+    const own = saved.get(code); let lyr, nm;
+    if (own) { lyr = L.geoJSON(own).getLayers()[0]; nm = (own.properties || {}).name; }
+    else { const u = unitLayer(code); if (!u) { status('no drawn unit ' + code); return; } lyr = u.layer; nm = u.name; }
+    if (work) map.removeLayer(work);
+    lyr.addTo(map); setWork(lyr); editing = true;
+    selectCode(code, nm || ''); map.fitBounds(lyr.getBounds().pad(0.1));
+    if (lyr.pm) lyr.pm.enable({ allowSelfIntersection: false, snappable: true });
+    status('moving the border of ' + nm + ' — drag vertices (click an edge midpoint to add one), then Save. Neighbours follow when the map is rebuilt.');
   }
   function syncLayers() {
     [['lyr-reg', regGrp], ['lyr-mun', munGrp], ['lyr-dis', disGrp], ['lyr-out', neighbours], ['lyr-dot', points], ['lyr-nam', namGrp]].forEach(([id, g]) => {
@@ -151,7 +177,8 @@
       const rings = u.r.map(r => ringLL(r).map(([la, lo]) => [lo, la]));
       const ft = { type: 'Feature', properties: { code: u.c, name: u.n }, geometry: { type: 'Polygon', coordinates: rings } };
       saved.set(u.c, ft);
-      const lyr = L.geoJSON(ft, { style: { color: '#ff7a59', weight: 1.5, fillOpacity: .08 } }).addTo(neighbours);
+      const big = u.c.split('.').length <= 8;
+      const lyr = L.geoJSON(ft, { style: big ? { color: '#ff7a59', weight: 2, fillOpacity: 0, dashArray: '6 4' } : { color: '#ff7a59', weight: 1.5, fillOpacity: .08 } }).addTo(neighbours);
       lyr.bindTooltip(u.n || u.c, { className: 'lbl', sticky: true });
       lyr.on('click', () => { if (!work) { selectCode(u.c, u.n || ''); status('existing outline ' + u.c + ' — Edit to change it, Draw to replace'); } });
     });
@@ -194,7 +221,8 @@
       if (!name.endsWith('.geojson')) continue;
       try { const f = await h.getFile(); const gj = JSON.parse(await f.text()); const feats = gj.type === 'FeatureCollection' ? gj.features : [gj];
         for (const ft of feats) { const code = (ft.properties || {}).code || name.replace(/\.geojson$/, ''); saved.set(code, ft);
-          const lyr = L.geoJSON(ft, { style: { color: '#ff7a59', weight: 1.5, fillOpacity: .08, dashArray: '' }, pmIgnore: false }).addTo(neighbours);
+          const big = code.split('.').length <= 8;
+          const lyr = L.geoJSON(ft, { style: big ? { color: '#ff7a59', weight: 2, fillOpacity: 0, dashArray: '6 4' } : { color: '#ff7a59', weight: 1.5, fillOpacity: .08, dashArray: '' }, pmIgnore: false }).addTo(neighbours);
           lyr.bindTooltip((ft.properties || {}).name || code, { className: 'lbl', sticky: true });
           lyr.on('click', () => { if (!work) { selectCode(code, (ft.properties || {}).name || ''); status('existing outline ' + code + ' — Edit to change it, Draw to replace'); } });
           n++; }
@@ -236,6 +264,7 @@
   }
   $('q').oninput = renderList;
   map.on('moveend', () => { if (pts.length > 6000) drawPoints(); });
+  $('admsel').onchange = e => { if (e.target.value) editUnit(e.target.value); };
   ['lyr-reg', 'lyr-mun', 'lyr-dis', 'lyr-out', 'lyr-dot', 'lyr-nam'].forEach(id => $(id).onchange = syncLayers);
   $('cc').onchange = e => { pts = []; points.clearLayers(); loadCountry(e.target.value.trim()); };
 
@@ -251,7 +280,7 @@
   let editing = false;
   $('draw').onclick = () => { editing = false; if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; } if (work) { map.removeLayer(work); work = null; } map.pm.enableDraw('Polygon', { snappable: true, finishOn: null }); status('click vertices; click the first vertex to close (double-click also finishes)'); };
   map.on('pm:create', e => { map.pm.disableDraw(); setWork(e.layer); status('outline closed — check it, then Save'); });
-  $('edit').onclick = () => { editing = true; if (work) { if (work.pm) work.pm.enable({ allowSelfIntersection: false, snappable: true }); status('drag vertices; click the midpoint of an edge to add one'); return; } const code = $('code').value.trim(); const ft = saved.get(code); if (!ft) { status('nothing to edit — draw first, or select an orange outline'); return; } const lyr = L.geoJSON(ft).getLayers()[0]; lyr.addTo(map); setWork(lyr); if (lyr.pm) lyr.pm.enable({ allowSelfIntersection: false, snappable: true }); status('editing the saved outline of ' + code); };
+  $('edit').onclick = () => { editing = true; if (work) { if (work.pm) work.pm.enable({ allowSelfIntersection: false, snappable: true }); status('drag vertices; click the midpoint of an edge to add one'); return; } const code = $('code').value.trim(); const ft = saved.get(code); if (!ft) { if (unitByCode(code)) { editUnit(code); return; } status('nothing to edit — draw first, or select an orange outline'); return; } const lyr = L.geoJSON(ft).getLayers()[0]; lyr.addTo(map); setWork(lyr); if (lyr.pm) lyr.pm.enable({ allowSelfIntersection: false, snappable: true }); status('editing the saved outline of ' + code); };
   $('clear').onclick = () => { if (PM) map.pm.disableDraw(); if (work) { map.removeLayer(work); work = null; } $('save').disabled = true; $('dl').disabled = true; status('discarded'); };
   $('who').value = localStorage.getItem('zss.trace.who') || ''; $('who').onchange = e => localStorage.setItem('zss.trace.who', e.target.value.trim().toUpperCase());
 
@@ -260,8 +289,8 @@
     if (!/^\d+(\.\d+)+$/.test(code)) { status('a code is digits and dots: 3.6.5.1.2.3.4.0.12'); return null; }
     if (!work) { status('nothing drawn'); return null; }
     const gj = work.toGeoJSON(); if (work.pm) work.pm.disable();
-    const ring = gj.geometry.coordinates[0]; if (!ring || ring.length < 4) { status('the outline needs at least three vertices'); return null; }
-    gj.properties = { code, name: $('name').value.trim(), level: code.split('.').length, licence: 'own', status: 'asserted', kind: 'settlement outline',
+    const ring = gj.geometry.type === 'MultiPolygon' ? gj.geometry.coordinates[0][0] : gj.geometry.coordinates[0]; if (!ring || ring.length < 4) { status('the outline needs at least three vertices'); return null; }
+    gj.properties = { code, name: $('name').value.trim(), level: code.split('.').length, licence: 'own', status: 'asserted', kind: code.split('.').length <= 6 ? 'municipality outline' : code.split('.').length <= 8 ? 'district outline' : 'settlement outline',
       source: ($('basis').value === 'napr' ? 'ZSS, traced by hand following the NAPR settlement-boundary layer (maps.gov.ge, working version) over ' : $('basis').value === 'other' ? 'ZSS, traced by hand from another map over ' : 'ZSS, traced by hand over ') + (baseName === 'sat' ? 'Esri World Imagery' : baseName === 'osm' ? 'OpenStreetMap' : 'OpenTopoMap'),
       basis: $('basis').value,
       traced_at: new Date().toISOString().slice(0, 10), zoom: map.getZoom(), by: ($('who').value || '').toUpperCase() || null, note: $('note').value.trim() || null,
