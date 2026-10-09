@@ -696,7 +696,7 @@
     // settlements, only at the deepest level, only the ones inside this parent -- and only once
     // the map is close enough for them to be dots rather than a blanket: 460 markers hid all
     // fourteen of Massachusetts' counties at zoom 7.
-    if (deep && d.pts && d.pts.length) {
+    if ((deep || d.units.some(function (u) { return u.leaf; })) && d.pts && d.pts.length) {   // a file of leaves beside one deeper unit (Tbilisi's districts) keeps its dots
       ptGrp = L.layerGroup(d.pts.map(function (q) {
         var m = L.circleMarker([q[2], q[3]], {
           renderer: rend, radius: 2.2, color: '#fff', weight: .8, opacity: .9,
