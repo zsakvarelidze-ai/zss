@@ -65,6 +65,7 @@
       <h2>Settlement</h2>
       <label>Country code <input id="cc" class="mono" placeholder="3.6.5"></label>
       <label>Find <input id="q" placeholder="name or code"></label>
+      <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="adm" checked style="width:auto"> Municipal lines (regions, municipalities, Tbilisi districts)</label>
       <div class="row"><button id="places-btn" title="Add the GeoNames settlements of this country as amber points (code at L9, provisional until the outline is saved)">Load GeoNames places</button></div>
       <div class="list" id="list"></div>
       <p class="hint">Green: register rows with a point. Amber: GeoNames places — their code is written at L9, parent + 0 for each skipped tier + n, and becomes a register row when the outline is saved. Orange: already outlined. Or click anywhere on the map with nothing selected and the outline is saved under the parent you type.</p>
@@ -111,7 +112,24 @@
   $('labels').onchange = e => e.target.checked ? labels.addTo(map) : map.removeLayer(labels);
   const neighbours = L.featureGroup().addTo(map);      // outlines already saved
   const points = L.layerGroup().addTo(map);            // settlement points of the country
-  const selMark = L.layerGroup().addTo(map);           // ring on the selected settlement, always shown
+  const selMark = L.layerGroup().addTo(map);
+  const admin = L.layerGroup().addTo(map);             // municipal lines from data/b, for reference and snapping
+  const VB = '?v=2026-10-09b';
+  function ringLL(r) { const v = r.split(' '); let x = +v[0], y = +v[1]; const out = [[y / 1e4, x / 1e4]]; for (let i = 2; i + 1 < v.length; i += 2) { x += +v[i]; y += +v[i + 1]; out.push([y / 1e4, x / 1e4]); } return out; }
+  const BR = {}, brWant = {};
+  function drawAdmin() {
+    admin.clearLayers(); if (!$('adm').checked) return;
+    Object.values(BR).forEach(d => d.units.forEach(u => {
+      const deeper = !u.leaf && BR[u.c];                 // drawn by its children instead
+      if (deeper) return;
+      u.r.forEach(r => L.polygon(ringLL(r), { color: d.level >= 7 ? '#8fb3ff' : '#ffffff', weight: d.level >= 7 ? 1 : 1.4, opacity: .75, fill: false, interactive: false, dashArray: d.level >= 7 ? '3 3' : null }).addTo(admin));
+    }));
+    admin.eachLayer(l => l.bringToBack && l.bringToBack());
+  }
+  function loadBranch(code) {
+    if (brWant[code]) return; brWant[code] = true;
+    loadScript('data/b/' + code.replace(/\./g, '_') + '.js' + VB, () => {});
+  }           // ring on the selected settlement, always shown
   let work = null;                                      // the polygon being drawn or edited
   const PM = !!map.pm;
   if (!PM) status('drawing tools did not load (unpkg.com unreachable) — the map and the list still work');
@@ -158,6 +176,7 @@
   //      data/places/<cc>.js (GeoNames settlements under their parent, code = parent.n, provisional)
   let pts = [], placesLoaded = false;
   window.ZSS = {
+    branch: d => { BR[d.code] = d; d.units.forEach(u => { if (!u.leaf) loadBranch(u.c); }); drawAdmin(); },
     pts: d => { pts = pts.filter(p => p.kind === 'place').concat((d.pts || []).map(p => ({ code: p[0], name: p[1], lat: p[2], lon: p[3], kind: 'row' }))); after(d.code + ': ' + pts.length + ' points'); },
     places: d => { placesLoaded = true; pts = pts.concat((d.places || []).map(p => ({ code: p[0] + '.0'.repeat(Math.max(0, 8 - p[0].split('.').length)) + '.' + p[1], name: p[2], lat: p[3], lon: p[4], kind: 'place', fcode: p[5] }))); after(d.code + ': ' + pts.length + ' points incl. GeoNames places'); }
   };
@@ -167,9 +186,10 @@
   function loadCountry(cc) {
     if (!/^\d+\.\d+\.\d+$/.test(cc)) return;
     $('back-country').href = 'country.html?code=' + cc; pts = []; placesLoaded = false; fitted = false; points.clearLayers();
-    loadScript('data/pts/' + cc + '.js', () => status('no register points for ' + cc + ' — try GeoNames places, or type a code and draw'));
+    Object.keys(BR).forEach(k => delete BR[k]); Object.keys(brWant).forEach(k => delete brWant[k]); admin.clearLayers(); loadBranch(cc);
+    loadScript('data/pts/' + cc + '.js' + VB, () => status('no register points for ' + cc + ' — try GeoNames places, or type a code and draw'));
   }
-  $('places-btn').onclick = () => { const cc = $('cc').value.trim(); if (!cc || placesLoaded) return; loadScript('data/places/' + cc + '.js', () => status('no places file for ' + cc + ' (countries over 30,000 places are not on the site)')); };
+  $('places-btn').onclick = () => { const cc = $('cc').value.trim(); if (!cc || placesLoaded) return; loadScript('data/places/' + cc + '.js' + VB, () => status('no places file for ' + cc + ' (countries over 30,000 places are not on the site)')); };
   function drawPoints() {
     points.clearLayers();
     if (pts.length > 6000 && map.getZoom() < 11) { status(pts.length + ' points — zoom in to see them'); return; }
@@ -184,6 +204,7 @@
   }
   $('q').oninput = renderList;
   map.on('moveend', () => { if (pts.length > 6000) drawPoints(); });
+  $('adm').onchange = drawAdmin;
   $('cc').onchange = e => { pts = []; points.clearLayers(); loadCountry(e.target.value.trim()); };
 
   // ---- selection and the working polygon
@@ -195,9 +216,10 @@
     work = layer; $('save').disabled = !(work && dirHandle); $('dl').disabled = !work;
     if (work) { work.setStyle({ color: '#35f0a0', weight: 2, fillOpacity: .12 }); work.on('pm:edit', () => status('edited — Save when done')); }
   }
-  $('draw').onclick = () => { if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; } if (work) { map.removeLayer(work); work = null; } map.pm.enableDraw('Polygon', { snappable: true, finishOn: null }); status('click vertices; click the first vertex to close (double-click also finishes)'); };
+  let editing = false;
+  $('draw').onclick = () => { editing = false; if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; } if (work) { map.removeLayer(work); work = null; } map.pm.enableDraw('Polygon', { snappable: true, finishOn: null }); status('click vertices; click the first vertex to close (double-click also finishes)'); };
   map.on('pm:create', e => { map.pm.disableDraw(); setWork(e.layer); status('outline closed — check it, then Save'); });
-  $('edit').onclick = () => { if (work) { if (work.pm) work.pm.enable({ allowSelfIntersection: false, snappable: true }); status('drag vertices; click the midpoint of an edge to add one'); return; } const code = $('code').value.trim(); const ft = saved.get(code); if (!ft) { status('nothing to edit — draw first, or select an orange outline'); return; } const lyr = L.geoJSON(ft).getLayers()[0]; lyr.addTo(map); setWork(lyr); if (lyr.pm) lyr.pm.enable({ allowSelfIntersection: false, snappable: true }); status('editing the saved outline of ' + code); };
+  $('edit').onclick = () => { editing = true; if (work) { if (work.pm) work.pm.enable({ allowSelfIntersection: false, snappable: true }); status('drag vertices; click the midpoint of an edge to add one'); return; } const code = $('code').value.trim(); const ft = saved.get(code); if (!ft) { status('nothing to edit — draw first, or select an orange outline'); return; } const lyr = L.geoJSON(ft).getLayers()[0]; lyr.addTo(map); setWork(lyr); if (lyr.pm) lyr.pm.enable({ allowSelfIntersection: false, snappable: true }); status('editing the saved outline of ' + code); };
   $('clear').onclick = () => { if (PM) map.pm.disableDraw(); if (work) { map.removeLayer(work); work = null; } $('save').disabled = true; $('dl').disabled = true; status('discarded'); };
   $('who').value = localStorage.getItem('zss.trace.who') || ''; $('who').onchange = e => localStorage.setItem('zss.trace.who', e.target.value.trim().toUpperCase());
 
@@ -215,6 +237,11 @@
     return { type: 'FeatureCollection', features: [gj] };
   }
   $('save').onclick = async () => {
+    const code0 = $('code').value.trim();
+    if (saved.has(code0) && !editing) {
+      const old = (saved.get(code0).properties || {}).name || '';
+      if (!confirm('An outline is already saved under ' + code0 + (old ? ' (' + old + ')' : '') + '.\n\nReplace it with the shape you just drew?\n\nCancel, then pick the right settlement, if this was meant for another place.')) { status('not saved — pick the right settlement first'); return; }
+    }
     const fc = feature(); if (!fc) return;
     try { const own = await ownDir(true); const code = fc.features[0].properties.code; const fh = await own.getFileHandle(code + '.geojson', { create: true }); const w = await fh.createWritable(); await w.write(JSON.stringify(fc, null, 1)); await w.close();
       status('saved geometry/own/' + code + '.geojson'); map.removeLayer(work); work = null; $('save').disabled = true; $('dl').disabled = true; $('note').value = ''; await loadNeighbours(); drawPoints(); }
