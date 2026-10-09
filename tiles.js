@@ -504,8 +504,13 @@
       if (code === country) { openBranch(code); return; }
       // a deeper code opens as a branch if it has one, else inside its parent's
       wantBranch(country, function (top) {
-        var L = code.split('.').length, deepest = (top.meta && top.meta.deepest) || 9;
-        openBranch(L < deepest ? code : code.slice(0, code.lastIndexOf('.')));
+        var L = code.split('.').length, deepest = (top.meta && top.meta.deepest) || 9, up = code.slice(0, code.lastIndexOf('.'));
+        if (L >= deepest) { openBranch(up); return; }
+        // a unit marked leaf has no file of its own (Georgia: only Tbilisi goes on to L7)
+        wantBranch(up, function (pd) {
+          var u = pd.units.filter(function (x) { return x.c === code; })[0];
+          openBranch(u && u.leaf ? up : code);
+        });
       });
       return;
     }
@@ -744,7 +749,7 @@
       wantBranch(c, function (d) {
         loading--;
         if (d.level === Lv) units = units.concat(d.units);
-        else if (d.level < Lv) d.units.forEach(function (u) { todo.push(u.c); });
+        else if (d.level < Lv) d.units.forEach(function (u) { if (!u.leaf) todo.push(u.c); });
         while (todo.length && loading < 6) step();
         if (!todo.length && !loading) done();
       });
@@ -758,7 +763,7 @@
         var p = L.polygon(rr, { renderer: rend, color: col, weight: Lv >= 7 ? .6 : 1, opacity: .9,
           fillColor: col, fillOpacity: .35 * op, fillRule: 'evenodd', interactive: true });
         p.zss = u;
-        p.on('click', function (e) { L.DomEvent.stop(e); if (Lv < meta.deepest) openBranch(this.zss.c); else { showUnit(this.zss, Lv, null); markUnit(this); } });
+        p.on('click', function (e) { L.DomEvent.stop(e); if (Lv < meta.deepest && !this.zss.leaf) openBranch(this.zss.c); else { showUnit(this.zss, Lv, null); markUnit(this); } });
         p.bindTooltip(u.n + ' · ' + u.c, { sticky: true });
         acc.push(p);
         return acc;
