@@ -84,7 +84,8 @@
     <div class="card">
       <h2>Outline</h2>
       <div id="sel" class="mono">nothing selected</div>
-      <label>Edit a municipality or district <select id="admsel"><option value="">— pick one to move its border —</option></select></label>
+      <label>Edit a region, municipality or district <select id="admsel"><option value="">— pick one to move its border —</option></select></label>
+      <p class="hint">Regions (▸) and municipalities both work. Move a region's border and the municipalities along it follow when the map is rebuilt.</p>
       <label>Code <input id="code" class="mono" placeholder="3.6.5.2.2.6.1.0.12 — L9 for a settlement"></label>
       <label>Name <input id="name"></label>
       <label>Your initials <input id="who" class="mono" maxlength="6" placeholder="ZS"></label>
@@ -144,10 +145,10 @@
   function unitByCode(code) { for (const d of Object.values(BR)) for (const u of d.units) if (u.c === code) return { u, level: d.level }; return null; }
   function fillPicker() {
     const sel = $('admsel'), keep = sel.value, items = [];
-    Object.values(BR).forEach(d => { if (d.level >= 6) d.units.forEach(u => items.push([d.level, u.c, u.n, (unitByCode(d.code) || {}).u])); });
+    Object.values(BR).forEach(d => { if (d.level >= 4) d.units.forEach(u => items.push([d.level, u.c, u.n, (unitByCode(d.code) || {}).u])); });
     items.sort((a, b) => a[0] - b[0] || a[2].localeCompare(b[2]));
     sel.innerHTML = '<option value="">— pick one to move its border —</option>' + items.map(([L_, c, n, up]) =>
-      '<option value="' + c + '">' + esc(n) + (L_ === 6 ? '' : L_ === 7 ? ' (Tbilisi district)' : ' (part of ' + esc(up ? up.n : '') + ')') + (up && L_ === 6 ? ' · ' + esc(up.n) : '') + '</option>').join('');
+      '<option value="' + c + '">' + (L_ <= 5 ? '▸ ' : '') + esc(n) + (L_ === 4 ? ' (half of the country)' : L_ === 5 ? ' (region)' : L_ === 6 ? '' : L_ === 7 ? ' (Tbilisi district)' : ' (part of ' + esc(up ? up.n : '') + ')') + (up && L_ === 6 ? ' · ' + esc(up.n) : '') + '</option>').join('');
     sel.value = keep;
   }
   function unitLayer(code) {
@@ -298,7 +299,7 @@
     if (!work) { status('nothing drawn'); return null; }
     const gj = work.toGeoJSON(); if (work.pm) work.pm.disable();
     const ring = gj.geometry.type === 'MultiPolygon' ? gj.geometry.coordinates[0][0] : gj.geometry.coordinates[0]; if (!ring || ring.length < 4) { status('the outline needs at least three vertices'); return null; }
-    gj.properties = { code, name: $('name').value.trim(), level: code.split('.').length, licence: 'own', status: 'asserted', kind: code.split('.').length <= 6 ? 'municipality outline' : code.split('.').length <= 8 ? 'district outline' : 'settlement outline',
+    gj.properties = { code, name: $('name').value.trim(), level: code.split('.').length, licence: 'own', status: 'asserted', kind: code.split('.').length <= 5 ? 'region outline' : code.split('.').length <= 6 ? 'municipality outline' : code.split('.').length <= 8 ? 'district outline' : 'settlement outline',
       source: ($('basis').value === 'napr' ? 'ZSS, traced by hand following the NAPR settlement-boundary layer (maps.gov.ge, working version) over ' : $('basis').value === 'other' ? 'ZSS, traced by hand from another map over ' : 'ZSS, traced by hand over ') + (baseName === 'sat' ? 'Esri World Imagery' : baseName === 'osm' ? 'OpenStreetMap' : 'OpenTopoMap'),
       basis: $('basis').value,
       traced_at: new Date().toISOString().slice(0, 10), zoom: map.getZoom(), by: ($('who').value || '').toUpperCase() || null, note: $('note').value.trim() || null,
