@@ -126,7 +126,7 @@
   const points = L.layerGroup().addTo(map);            // settlement points of the country
   const selMark = L.layerGroup().addTo(map);
   const munGrp = L.layerGroup().addTo(map), disGrp = L.layerGroup().addTo(map), regGrp = L.layerGroup().addTo(map), namGrp = L.layerGroup();   // reference lines from data/b
-  const VB = '?v=2026-10-09d';
+  const VB = '?v=2026-10-09e';
   function ringLL(r) { const v = r.split(' '); let x = +v[0], y = +v[1]; const out = [[y / 1e4, x / 1e4]]; for (let i = 2; i + 1 < v.length; i += 2) { x += +v[i]; y += +v[i + 1]; out.push([y / 1e4, x / 1e4]); } return out; }
   const BR = {}, brWant = {};
   function drawAdmin() {
