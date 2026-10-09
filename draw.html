@@ -126,7 +126,7 @@
   const points = L.layerGroup().addTo(map);            // settlement points of the country
   const selMark = L.layerGroup().addTo(map);
   const munGrp = L.layerGroup().addTo(map), disGrp = L.layerGroup().addTo(map), regGrp = L.layerGroup().addTo(map), namGrp = L.layerGroup();   // reference lines from data/b
-  const VB = '?v=2026-10-09c';
+  const VB = '?v=2026-10-09d';
   function ringLL(r) { const v = r.split(' '); let x = +v[0], y = +v[1]; const out = [[y / 1e4, x / 1e4]]; for (let i = 2; i + 1 < v.length; i += 2) { x += +v[i]; y += +v[i + 1]; out.push([y / 1e4, x / 1e4]); } return out; }
   const BR = {}, brWant = {};
   function drawAdmin() {
@@ -153,7 +153,13 @@
   function unitLayer(code) {
     const hit = unitByCode(code); if (!hit) return null;
     const rings = hit.u.r.map(ringLL);
-    return { layer: L.polygon(rings.length === 1 ? rings[0] : rings), name: hit.u.n, level: hit.level };
+    // separate parts stay separate; a ring inside another is that part's hole
+    const inRing = (pt, ring) => { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const a = ring[i], b = ring[j];
+      if ((a[0] > pt[0]) !== (b[0] > pt[0]) && pt[1] < (b[1] - a[1]) * (pt[0] - a[0]) / (b[0] - a[0]) + a[1]) c = !c; } return c; };
+    const parts = [];
+    rings.forEach((r, i) => { const host = rings.findIndex((o, j) => j !== i && inRing(r[0], o)); if (host < 0) parts.push([r]); });
+    rings.forEach((r, i) => { const host = rings.findIndex((o, j) => j !== i && inRing(r[0], o)); if (host >= 0) { const pp = parts.find(q => q[0] === rings[host]); if (pp) pp.push(r); } });
+    return { layer: L.polygon(parts.length === 1 ? parts[0] : parts), name: hit.u.n, level: hit.level };
   }
   function editUnit(code) {
     if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; }
@@ -163,7 +169,7 @@
     if (work) map.removeLayer(work);
     lyr.addTo(map); setWork(lyr); editing = true;
     selectCode(code, nm || ''); map.fitBounds(lyr.getBounds().pad(0.1));
-    if (lyr.pm) lyr.pm.enable({ allowSelfIntersection: false, snappable: true });
+    if (lyr.pm) lyr.pm.enable({ allowSelfIntersection: true, snappable: true });
     status('moving the border of ' + nm + ' — drag vertices (click an edge midpoint to add one), then Save. Neighbours follow when the map is rebuilt.');
   }
   function syncLayers() {
