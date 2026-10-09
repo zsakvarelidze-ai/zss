@@ -163,9 +163,11 @@
   }
   function editUnit(code) {
     if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; }
-    const own = saved.get(code); let lyr, nm;
-    if (own) { lyr = L.geoJSON(own).getLayers()[0]; nm = (own.properties || {}).name; }
-    else { const u = unitLayer(code); if (!u) { status('no drawn unit ' + code); return; } lyr = u.layer; nm = u.name; }
+    // the site's border already includes every saved edit after a rebuild, so it is the one to move
+    const own = saved.get(code), u = unitLayer(code); let lyr, nm;
+    if (u) { lyr = u.layer; nm = u.name; }
+    else if (own) { lyr = L.geoJSON(own).getLayers()[0]; nm = (own.properties || {}).name; }
+    else { status('no drawn unit ' + code); return; }
     if (work) map.removeLayer(work);
     lyr.addTo(map); setWork(lyr); editing = true;
     selectCode(code, nm || ''); map.fitBounds(lyr.getBounds().pad(0.1));
