@@ -47,6 +47,15 @@
   .nm.r { color:#ffd166; font-size:12.5px } .nm.d { color:#8fb3ff }
   .lbl { background: rgba(11,15,18,.75); color: var(--ink); border: 0; border-radius: 2px; padding: 1px 5px; font: 11px var(--mono); white-space: nowrap; }
   .leaflet-control-attribution { font-size: 10px; }
+  .guard { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 2000; }
+  .guard.on { display: flex; }
+  .guard .box { background: var(--panel); border: 1px solid var(--warn); max-width: 480px; width: calc(100% - 32px); padding: 16px; display: grid; gap: 10px; }
+  .guard h3 { margin: 0; font: 600 14px var(--sans); color: var(--warn); }
+  .guard .as { font: 600 15px var(--sans); color: var(--ink); }
+  .guard ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13px; }
+  .guard .sug { display: grid; gap: 6px; }
+  .guard label { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--dim); }
+  .guard label input { width: auto; }
 </style>
 </head>
 <body>
@@ -103,6 +112,14 @@
   </aside>
 </main>
 
+<div class="guard" id="guard" role="dialog" aria-modal="true" aria-labelledby="guard-h"><div class="box">
+  <h3 id="guard-h">Check before saving</h3>
+  <div class="as" id="guard-as"></div>
+  <ul id="guard-list"></ul>
+  <div class="sug" id="guard-sug"></div>
+  <label><input type="checkbox" id="guard-ok"> <span id="guard-oktext"></span></label>
+  <div class="row"><button id="guard-cancel" class="primary">Cancel</button><button id="guard-go" disabled>Save anyway</button></div>
+</div></div>
 <script src="lib/leaflet.js"></script>
 <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js"></script>
 <script>
@@ -287,7 +304,7 @@
     if (work) { work.setStyle({ color: '#35f0a0', weight: 2, fillOpacity: .12 }); work.on('pm:edit', () => status('edited — Save when done')); }
   }
   let editing = false;
-  $('draw').onclick = () => { editing = false; if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; } if (work) { map.removeLayer(work); work = null; } map.pm.enableDraw('Polygon', { snappable: true, finishOn: null }); status('click vertices; click the first vertex to close (double-click also finishes)'); };
+  $('draw').onclick = () => { editing = false; if ($('admsel').value) { $('admsel').value = ''; const c = $('code').value.trim(); if (c && unitByCode(c)) { $('code').value = ''; $('name').value = ''; $('sel').textContent = 'nothing selected'; sel = null; selMark.clearLayers(); } } if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; } if (work) { map.removeLayer(work); work = null; } map.pm.enableDraw('Polygon', { snappable: true, finishOn: null }); status('click vertices; click the first vertex to close (double-click also finishes)'); };
   map.on('pm:create', e => { map.pm.disableDraw(); setWork(e.layer); status('outline closed — check it, then Save'); });
   $('edit').onclick = () => { editing = true; if (work) { if (work.pm) work.pm.enable({ allowSelfIntersection: true, snappable: true }); status('drag vertices; click the midpoint of an edge to add one'); return; } const code = $('code').value.trim(); const ft = saved.get(code); if (!ft) { if (unitByCode(code)) { editUnit(code); return; } status('nothing to edit — draw first, or select an orange outline'); return; } const lyr = L.geoJSON(ft).getLayers()[0]; lyr.addTo(map); setWork(lyr); if (lyr.pm) lyr.pm.enable({ allowSelfIntersection: true, snappable: true }); status('editing the saved outline of ' + code); };
   $('clear').onclick = () => { if (PM) map.pm.disableDraw(); if (work) { map.removeLayer(work); work = null; } $('save').disabled = true; $('dl').disabled = true; status('discarded'); };
@@ -306,18 +323,78 @@
       vertices: ring.length - 1, replaces: saved.has(code) ? (saved.get(code).properties || {}).traced_at || true : null };
     return { type: 'FeatureCollection', features: [gj] };
   }
-  $('save').onclick = async () => {
-    const code0 = $('code').value.trim();
-    if (saved.has(code0) && !editing) {
-      const old = (saved.get(code0).properties || {}).name || '';
-      if (!confirm('An outline is already saved under ' + code0 + (old ? ' (' + old + ')' : '') + '.\n\nReplace it with the shape you just drew?\n\nCancel, then pick the right settlement, if this was meant for another place.')) { status('not saved — pick the right settlement first'); return; }
-    }
-    const fc = feature(); if (!fc) return;
+
+  // ---- save guard: catches a shape about to be saved under the wrong code
+  const KM = (lat) => [111.32 * Math.cos(lat * Math.PI / 180), 110.57];
+  function gjPolys(g) { return g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []; }
+  function ringArea(r, lat0) { const [kx, ky] = KM(lat0); let a = 0; for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][0] * kx) * (r[i][1] * ky) - (r[i][0] * kx) * (r[j][1] * ky); return Math.abs(a) / 2; }
+  function gjArea(g) { let t = 0; gjPolys(g).forEach(p => { const lat0 = p[0][0][1]; t += ringArea(p[0], lat0); p.slice(1).forEach(h => t -= ringArea(h, lat0)); }); return t; }
+  function inRingLL(lon, lat, r) { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const a = r[i], b = r[j]; if ((a[1] > lat) !== (b[1] > lat) && lon < (b[0] - a[0]) * (lat - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; }
+  function gjContains(g, lon, lat) { return gjPolys(g).some(p => inRingLL(lon, lat, p[0]) && !p.slice(1).some(h => inRingLL(lon, lat, h))); }
+  function gjDistKm(g, lon, lat) { const [kx, ky] = KM(lat); let d = Infinity; gjPolys(g).forEach(p => p.forEach(r => { for (let i = 1; i < r.length; i++) { const ax = (r[i - 1][0] - lon) * kx, ay = (r[i - 1][1] - lat) * ky, bx = (r[i][0] - lon) * kx, by = (r[i][1] - lat) * ky, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy; let t = L2 ? -(ax * dx + ay * dy) / L2 : 0; t = Math.max(0, Math.min(1, t)); d = Math.min(d, Math.hypot(ax + t * dx, ay + t * dy)); } })); return d; }
+  function unitGJ(code) {   // the site's current shape of a unit, as GeoJSON (even-odd: rings inside rings are holes)
+    const hit = unitByCode(code); if (!hit) return null;
+    return { type: 'MultiPolygon', coordinates: hit.u.r.map(r => [ringLL(r).map(([la, lo]) => [lo, la])]) };
+  }
+  function evenOddArea(g) { // site units: every ring listed separately; inner rings subtract
+    const rings = g.coordinates.map(p => p[0]); let t = 0;
+    rings.forEach((r, i) => { const depth = rings.filter((o, j) => j !== i && inRingLL(r[0][0], r[0][1], o)).length; t += (depth % 2 ? -1 : 1) * ringArea(r, r[0][1]); });
+    return t;
+  }
+  function evenOddContains(g, lon, lat) { return g.coordinates.filter(p => inRingLL(lon, lat, p[0])).length % 2 === 1; }
+  const KIND = n => n <= 4 ? 'half of the country' : n === 5 ? 'region' : n === 6 ? 'municipality' : n <= 8 ? 'district' : 'settlement';
+  const fmtKm = a => a >= 100 ? Math.round(a).toLocaleString() : a >= 1 ? a.toFixed(1) : a.toFixed(2);
+  function checkSave(fc) {
+    const f = fc.features[0], g = f.geometry, code = f.properties.code, name = f.properties.name || '', n = code.split('.').length;
+    const probs = [], sugs = [], area = gjArea(g);
+    // 1. a brand-new shape while a region / municipality / district is selected
+    if (!editing && n <= 8 && unitByCode(code)) probs.push('You drew a <b>new</b> shape while the ' + KIND(n) + ' <b>' + esc(name || code) + '</b> is selected. Saving replaces that whole ' + KIND(n) + '. To move its border use Edit; to trace a settlement, pick the settlement first.');
+    // 2. compared with what is already saved under this code
+    const prev = saved.get(code); let oldA = null;
+    if (prev && prev.geometry) oldA = gjArea(prev.geometry); else { const u = unitGJ(code); if (u) oldA = evenOddArea(u); }
+    if (oldA && oldA > 0.01 && (area / oldA > 2 || area / oldA < 0.5)) probs.push('<b>' + esc(name || code) + '</b> is ' + fmtKm(oldA) + ' km² now; your shape is ' + fmtKm(area) + ' km².');
+    // 3. the settlement's own dot
+    const me = pts.find(p => p.code === code);
+    if (me && !gjContains(g, me.lon, me.lat)) { const d = gjDistKm(g, me.lon, me.lat); if (d > 0.5) probs.push('The dot of <b>' + esc(me.name) + '</b> is ' + d.toFixed(1) + ' km away from what you drew.'); }
+    // 4. the municipality it belongs to
+    if (n >= 7) { const pc = code.split('.').slice(0, 6).join('.'), pu = unitGJ(pc), ph = unitByCode(pc);
+      if (pu) { const vs = gjPolys(g).flatMap(p => p[0]); const inside = vs.filter(v => evenOddContains(pu, v[0], v[1])).length / vs.length;
+        if (inside < 0.5) probs.push('Most of the shape lies outside <b>' + esc(ph.u.n) + '</b>, the municipality ' + esc(code) + ' belongs to.'); } }
+    // 5. size that fits the level
+    if (n >= 9 && area > 150) probs.push('A settlement of ' + fmtKm(area) + ' km² — is this a community territory rather than the village?');
+    if (n <= 6 && area < 5) probs.push('A ' + KIND(n) + ' of only ' + fmtKm(area) + ' km².');
+    // dots inside the shape that might be the one meant
+    if (probs.length) pts.filter(p => p.code !== code && p.code.split('.').length >= 9 && gjContains(g, p.lon, p.lat)).slice(0, 4).forEach(p => sugs.push(p));
+    return { probs, sugs, area, code, name, n };
+  }
+  let guardGo = null;
+  function closeGuard() { $('guard').classList.remove('on'); guardGo = null; }
+  function openGuard(r, go, retry) {
+    $('guard-as').innerHTML = 'Save as ' + esc(r.name || '(no name)') + ' · <span class="mono">' + esc(r.code) + '</span> · ' + KIND(r.n);
+    $('guard-list').innerHTML = r.probs.map(p => '<li>' + p + '</li>').join('');
+    const sg = $('guard-sug'); sg.innerHTML = '';
+    if (r.sugs.length) { const h = document.createElement('div'); h.className = 'hint'; h.textContent = 'Inside your shape:'; sg.appendChild(h);
+      r.sugs.forEach(p => { const b = document.createElement('button'); b.textContent = 'Save as ' + p.name + ' · ' + p.code + ' instead'; b.onclick = () => { closeGuard(); editing = false; selectCode(p.code, p.name, p.lat, p.lon); retry(); }; sg.appendChild(b); }); }
+    $('guard-ok').checked = false; $('guard-go').disabled = true;
+    $('guard-oktext').textContent = 'I checked — this shape is ' + (r.name || r.code) + ' (' + r.code + ')';
+    $('guard-go').textContent = 'Save as ' + (r.name || r.code) + ' anyway';
+    guardGo = go; $('guard').classList.add('on'); $('guard-cancel').focus();
+  }
+  $('guard-ok').onchange = e => { $('guard-go').disabled = !e.target.checked; };
+  $('guard-cancel').onclick = () => { closeGuard(); if (work && work.pm) work.pm.enable({ allowSelfIntersection: true, snappable: true }); status('not saved — fix the shape or pick the right settlement, then Save'); };
+  $('guard-go').onclick = () => { const go = guardGo; closeGuard(); if (go) go(); };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('guard').classList.contains('on')) { closeGuard(); status('not saved'); } });
+  function guarded(fc, go, retry) { const r = checkSave(fc); if (!r.probs.length) return go(); status('check before saving: ' + r.probs.length + ' thing' + (r.probs.length > 1 ? 's' : '') + ' to look at'); openGuard(r, go, retry); }
+  async function writeFC(fc) {
     try { const own = await ownDir(true); const code = fc.features[0].properties.code; const fh = await own.getFileHandle(code + '.geojson', { create: true }); const w = await fh.createWritable(); await w.write(JSON.stringify(fc, null, 1)); await w.close();
-      status('saved geometry/own/' + code + '.geojson'); map.removeLayer(work); work = null; $('save').disabled = true; $('dl').disabled = true; $('note').value = ''; await loadNeighbours(); drawPoints(); }
+      status('saved geometry/own/' + code + '.geojson'); if (work) map.removeLayer(work); work = null; editing = false; $('save').disabled = true; $('dl').disabled = true; $('note').value = ''; await loadNeighbours(); drawPoints(); }
     catch (e) { status('not saved: ' + e.message); }
-  };
-  $('dl').onclick = () => { const fc = feature(); if (!fc) return; const code = fc.features[0].properties.code; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(fc, null, 1)], { type: 'application/geo+json' })); a.download = code + '.geojson'; a.click(); status('downloaded ' + code + '.geojson — drop it in the chat or in geometry/own/'); };
+  }
+  function downloadFC(fc) { const code = fc.features[0].properties.code; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(fc, null, 1)], { type: 'application/geo+json' })); a.download = code + '.geojson'; a.click(); status('downloaded ' + code + '.geojson — drop it in the chat or in geometry/own/'); }
+  function trySave() { const fc = feature(); if (!fc) return; guarded(fc, () => writeFC(fc), trySave); }
+  function tryDownload() { const fc = feature(); if (!fc) return; guarded(fc, () => downloadFC(fc), tryDownload); }
+  $('save').onclick = trySave;
+  $('dl').onclick = tryDownload;
 
   // ---- entry from the URL
   const cc = qs.get('cc') || (qs.get('code') || '').split('.').slice(0, 3).join('.');
