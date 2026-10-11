@@ -255,7 +255,7 @@
   };
   if (NOFS) {
     $('pick').disabled = true; $('pick').textContent = 'Folders cannot be opened on this device'; $('forget').hidden = true; $('save').textContent = 'Save to Files…';
-    $('folder-hint').innerHTML = 'Save opens the share sheet: choose <b>Save to Files</b> → OneDrive → ZSS FILES → register → geometry → own. A copy stays on this device in yellow until the folder has it. <span id="nb"></span> <span id="pend"></span>';
+    $('folder-hint').innerHTML = 'Save opens the share sheet: choose <b>Save to Files</b> → OneDrive → Desktop → ZSS FILES → register → geometry → own. A copy stays on this device in yellow until the folder has it. <span id="nb"></span> <span id="pend"></span>';
     setTimeout(drawPending, 0);
   }
   $('forget').onclick = async () => { dirHandle = null; await idb.set(null); $('folder-hint').textContent = 'No folder chosen. Save gives a file to download.'; neighbours.clearLayers(); };
@@ -459,7 +459,7 @@
     pendPut(code, fc);
     const file = new File([JSON.stringify(fc, null, 1)], fname, { type: 'application/json' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: fname }); status('shared ' + fname + ' — it belongs in ZSS FILES/register/geometry/own'); }
+      try { await navigator.share({ files: [file] }); status('shared ' + fname + ' — it belongs in OneDrive/Desktop/ZSS FILES/register/geometry/own'); }
       catch (e) { if (e.name === 'AbortError') status('not shared — ' + fname + ' is kept on this device (yellow); Save again to share it'); else { downloadFC(fc); } }
     } else downloadFC(fc);
     if (work) map.removeLayer(work); work = null; editing = false; $('save').disabled = true; $('dl').disabled = true; $('note').value = '';
