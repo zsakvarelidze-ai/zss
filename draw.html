@@ -101,7 +101,7 @@
         <label class="lyr"><input type="checkbox" id="lyr-out" checked> <i style="background:#ff4fa3"></i>Traced outlines</label>
         <label class="lyr"><input type="checkbox" id="lyr-dot" checked> <i style="background:#35f0a0;border-radius:50%"></i>Settlement dots</label>
         <label class="lyr"><input type="checkbox" id="lyr-nam"> <i style="background:transparent;border:1px solid #888"></i>Names</label>
-        <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Your traced outlines are dashed, in the colour of their level; settlement outlines are filled pink.</p>
+        <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Your traced outlines are dashed, in the colour of their level; neighbourhoods are filled teal, settlement outlines filled pink.</p>
       </div>
       <div class="row"><button id="places-btn" title="Add the GeoNames settlements of this country as amber points (code at L9, provisional until the outline is saved)">Load GeoNames places</button></div>
       <div class="list" id="list"></div>
@@ -150,13 +150,14 @@
   const map = L.map('map', { zoomControl: true, worldCopyJump: true }).setView([42.0, 43.5], 7);
   const NOFS = !window.showDirectoryPicker, PKEY = 'zss.trace.pending';
   // one colour per level, the same for the published line and ZSS's traced outline (traced = dashed):
-  // regions gold, municipalities white, Tbilisi districts blue, settlements pink (filled)
-  const LV = { reg: '#ffd166', mun: '#ffffff', dis: '#7cc4ff', set: '#ff4fa3', pend: '#c3f73a' };
+  // regions gold, municipalities white, Tbilisi districts blue, neighbourhoods teal (filled), settlements pink (filled)
+  const LV = { reg: '#ffd166', mun: '#ffffff', dis: '#7cc4ff', nbh: '#3de0c8', set: '#ff4fa3', pend: '#c3f73a' };
   function ownStyle(code) {
     const n = String(code).split('.').length;
     if (n <= 5) return { color: LV.reg, weight: 3, opacity: .95, fillOpacity: 0, dashArray: '8 5' };
     if (n === 6) return { color: LV.mun, weight: 2.2, opacity: .95, fillOpacity: 0, dashArray: '6 4' };
-    if (n <= 8) return { color: LV.dis, weight: 1.8, opacity: .95, fillOpacity: 0, dashArray: '4 4' };
+    if (n === 7) return { color: LV.dis, weight: 1.8, opacity: .95, fillOpacity: 0, dashArray: '4 4' };
+    if (n === 8) return { color: LV.nbh, weight: 2.2, opacity: 1, fillColor: LV.nbh, fillOpacity: .14, dashArray: '' };   // neighbourhoods: teal, filled
     return { color: LV.set, weight: 1.6, opacity: .95, fillColor: LV.set, fillOpacity: .12, dashArray: '' };
   }   // NOFS: this browser cannot open folders (iPad, phones)
   const bases = {
