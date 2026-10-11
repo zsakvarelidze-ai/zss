@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="lib/leaflet.css">
 <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css">
 <style>
-  :root { --bg: #0b0f12; --panel: #141a1f; --ink: #e6ebe8; --dim: #8a978f; --line: #2a343a; --accent: #35f0a0; --warn: #f0b23a; --own: #ff7a59; --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace; --sans: "IBM Plex Sans", system-ui, sans-serif; }
+  :root { --bg: #0b0f12; --panel: #141a1f; --ink: #e6ebe8; --dim: #8a978f; --line: #2a343a; --accent: #35f0a0; --warn: #f0b23a; --own: #ff4fa3; --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace; --sans: "IBM Plex Sans", system-ui, sans-serif; }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body { background: var(--bg); color: var(--ink); font: 13px/1.45 var(--sans); display: grid; grid-template-rows: auto 1fr; }
@@ -44,7 +44,7 @@
   label.lyr { display:flex; align-items:center; gap:6px; font-size:12.5px; margin:0; cursor:pointer }
   label.lyr input { width:auto; margin:0 } label.lyr i { width:12px; height:3px; display:inline-block; flex:none }
   .nm { color:#fff; font:600 11px system-ui,sans-serif; text-shadow:0 0 3px #000,0 0 2px #000; white-space:nowrap; pointer-events:none }
-  .nm.r { color:#ffd166; font-size:12.5px } .nm.d { color:#8fb3ff }
+  .nm.r { color:#ffd166; font-size:12.5px } .nm.d { color:#7cc4ff }
   .lbl { background: rgba(11,15,18,.75); color: var(--ink); border: 0; border-radius: 2px; padding: 1px 5px; font: 11px var(--mono); white-space: nowrap; }
   .leaflet-control-attribution { font-size: 10px; }
   .guard { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 2000; }
@@ -97,14 +97,15 @@
       <div id="lyrs" style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin:4px 0 6px">
         <label class="lyr"><input type="checkbox" id="lyr-reg" checked> <i style="background:#ffd166"></i>Regions</label>
         <label class="lyr"><input type="checkbox" id="lyr-mun" checked> <i style="background:#ffffff"></i>Municipalities</label>
-        <label class="lyr"><input type="checkbox" id="lyr-dis" checked> <i style="background:#8fb3ff"></i>Districts (Tbilisi)</label>
-        <label class="lyr"><input type="checkbox" id="lyr-out" checked> <i style="background:#ff7a59"></i>Traced outlines</label>
+        <label class="lyr"><input type="checkbox" id="lyr-dis" checked> <i style="background:#7cc4ff"></i>Districts (Tbilisi)</label>
+        <label class="lyr"><input type="checkbox" id="lyr-out" checked> <i style="background:#ff4fa3"></i>Traced outlines</label>
         <label class="lyr"><input type="checkbox" id="lyr-dot" checked> <i style="background:#35f0a0;border-radius:50%"></i>Settlement dots</label>
         <label class="lyr"><input type="checkbox" id="lyr-nam"> <i style="background:transparent;border:1px solid #888"></i>Names</label>
+        <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Your traced outlines are dashed, in the colour of their level; settlement outlines are filled pink.</p>
       </div>
       <div class="row"><button id="places-btn" title="Add the GeoNames settlements of this country as amber points (code at L9, provisional until the outline is saved)">Load GeoNames places</button></div>
       <div class="list" id="list"></div>
-      <p class="hint">Green: register rows with a point. Amber: GeoNames places — their code is written at L9, parent + 0 for each skipped tier + n, and becomes a register row when the outline is saved. Orange: already outlined. Or click anywhere on the map with nothing selected and the outline is saved under the parent you type.</p>
+      <p class="hint">Green: register rows with a point. Amber: GeoNames places — their code is written at L9, parent + 0 for each skipped tier + n, and becomes a register row when the outline is saved. Pink: already outlined. Or click anywhere on the map with nothing selected and the outline is saved under the parent you type.</p>
     </div>
     <div class="card">
       <h2>Outline</h2>
@@ -147,7 +148,17 @@
 
   // ---- map
   const map = L.map('map', { zoomControl: true, worldCopyJump: true }).setView([42.0, 43.5], 7);
-  const NOFS = !window.showDirectoryPicker, PKEY = 'zss.trace.pending';   // NOFS: this browser cannot open folders (iPad, phones)
+  const NOFS = !window.showDirectoryPicker, PKEY = 'zss.trace.pending';
+  // one colour per level, the same for the published line and ZSS's traced outline (traced = dashed):
+  // regions gold, municipalities white, Tbilisi districts blue, settlements pink (filled)
+  const LV = { reg: '#ffd166', mun: '#ffffff', dis: '#7cc4ff', set: '#ff4fa3', pend: '#c3f73a' };
+  function ownStyle(code) {
+    const n = String(code).split('.').length;
+    if (n <= 5) return { color: LV.reg, weight: 3, opacity: .95, fillOpacity: 0, dashArray: '8 5' };
+    if (n === 6) return { color: LV.mun, weight: 2.2, opacity: .95, fillOpacity: 0, dashArray: '6 4' };
+    if (n <= 8) return { color: LV.dis, weight: 1.8, opacity: .95, fillOpacity: 0, dashArray: '4 4' };
+    return { color: LV.set, weight: 1.6, opacity: .95, fillColor: LV.set, fillOpacity: .12, dashArray: '' };
+  }   // NOFS: this browser cannot open folders (iPad, phones)
   const bases = {
     sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' }),
     osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }),
@@ -169,7 +180,7 @@
     Object.values(BR).forEach(d => d.units.forEach(u => {
       const L_ = d.level, grp = L_ <= 5 ? regGrp : L_ === 6 ? munGrp : disGrp;
       const st = L_ <= 4 ? { color: '#ffd166', weight: 3, opacity: .9 } : L_ === 5 ? { color: '#ffd166', weight: 2.2, opacity: .85 }
-               : L_ === 6 ? { color: '#ffffff', weight: 1.3, opacity: .75 } : { color: '#8fb3ff', weight: 1, opacity: .8, dashArray: '3 3' };
+               : L_ === 6 ? { color: '#ffffff', weight: 1.3, opacity: .75 } : { color: '#7cc4ff', weight: 1, opacity: .8, dashArray: '3 3' };
       u.r.forEach(r => L.polygon(ringLL(r), Object.assign({ fill: false, interactive: false }, st)).addTo(grp));
       if (u.b && L_ >= 5) L.marker([(u.b[1] + u.b[3]) / 2, (u.b[0] + u.b[2]) / 2], { interactive: false, keyboard: false, pmIgnore: true,
         icon: L.divIcon({ className: 'nm' + (L_ === 5 ? ' r' : L_ >= 7 ? ' d' : ''), html: u.n, iconSize: null }) }).addTo(namGrp);
@@ -222,7 +233,7 @@
       const ft = { type: 'Feature', properties: { code: u.c, name: u.n }, geometry: { type: 'Polygon', coordinates: rings } };
       saved.set(u.c, ft);
       const big = u.c.split('.').length <= 8;
-      const lyr = L.geoJSON(ft, { style: big ? { color: '#ff7a59', weight: 2, fillOpacity: 0, dashArray: '6 4' } : { color: '#ff7a59', weight: 1.5, fillOpacity: .08 } }).addTo(neighbours);
+      const lyr = L.geoJSON(ft, { style: ownStyle(u.c) }).addTo(neighbours);
       lyr.bindTooltip(u.n || u.c, { className: 'lbl', sticky: true });
       lyr.on('click', () => { if (!work) { selectCode(u.c, u.n || ''); status('existing outline ' + u.c + ' — Edit to change it, Draw to replace'); } });
     });
@@ -255,7 +266,7 @@
   };
   if (NOFS) {
     $('pick').disabled = true; $('pick').textContent = 'Folders cannot be opened on this device'; $('forget').hidden = true; $('save').textContent = 'Save to Files…';
-    $('folder-hint').innerHTML = 'Save opens the share sheet: choose <b>Save to Files</b> → OneDrive → Desktop → ZSS FILES → register → geometry → own. A copy stays on this device in yellow until the folder has it. <span id="nb"></span> <span id="pend"></span>';
+    $('folder-hint').innerHTML = 'Save opens the share sheet: choose <b>Save to Files</b> → OneDrive → Desktop → ZSS FILES → register → geometry → own. A copy stays on this device in lime green until the folder has it. <span id="nb"></span> <span id="pend"></span>';
     setTimeout(drawPending, 0);
   }
   $('forget').onclick = async () => { dirHandle = null; await idb.set(null); $('folder-hint').textContent = 'No folder chosen. Save gives a file to download.'; neighbours.clearLayers(); };
@@ -269,11 +280,11 @@
     if (!map.hasLayer(pendGrp)) pendGrp.addTo(map);
     pendGrp.clearLayers(); const p = pendAll(), codes = Object.keys(p);
     for (const code of codes) { const fc = p[code], ft = fc.features ? fc.features[0] : fc; saved.set(code, ft);
-      const lyr = L.geoJSON(ft, { style: { color: '#ffd166', weight: 2, fillOpacity: .08, dashArray: '2 5' } }).addTo(pendGrp);
+      const lyr = L.geoJSON(ft, { style: { color: '#c3f73a', weight: 2, fillOpacity: .08, dashArray: '2 5' } }).addTo(pendGrp);
       lyr.bindTooltip(((ft.properties || {}).name || code) + ' · kept on this device', { className: 'lbl', sticky: true });
       lyr.on('click', () => { if (!work) { selectCode(code, (ft.properties || {}).name || ''); status(code + ' is kept on this device — Edit to change it, Save to share it again'); } }); }
     const el = $('pend'); if (!el) return;
-    el.innerHTML = codes.length ? codes.length + ' outline' + (codes.length > 1 ? 's' : '') + ' kept on this device (yellow): ' + codes.map(esc).join(', ') + '. Once they are in the folder, <a href="#" id="pend-clear">forget them here</a>.' : '';
+    el.innerHTML = codes.length ? codes.length + ' outline' + (codes.length > 1 ? 's' : '') + ' kept on this device (lime green): ' + codes.map(esc).join(', ') + '. Once they are in the folder, <a href="#" id="pend-clear">forget them here</a>.' : '';
     const c = $('pend-clear'); if (c) c.onclick = e => { e.preventDefault();
       if (c.dataset.sure) { try { localStorage.removeItem(PKEY); } catch (er) {} for (const k of codes) saved.delete(k); drawPending(); status('copies on this device forgotten'); }
       else { c.dataset.sure = '1'; c.textContent = 'tap again to forget them — only if the folder has them'; } };
@@ -287,7 +298,7 @@
       try { const f = await h.getFile(); const gj = JSON.parse(await f.text()); const feats = gj.type === 'FeatureCollection' ? gj.features : [gj];
         for (const ft of feats) { const code = (ft.properties || {}).code || name.replace(/\.geojson$/, ''); saved.set(code, ft);
           const big = code.split('.').length <= 8;
-          const lyr = L.geoJSON(ft, { style: big ? { color: '#ff7a59', weight: 2, fillOpacity: 0, dashArray: '6 4' } : { color: '#ff7a59', weight: 1.5, fillOpacity: .08, dashArray: '' }, pmIgnore: false }).addTo(neighbours);
+          const lyr = L.geoJSON(ft, { style: ownStyle(code), pmIgnore: false }).addTo(neighbours);
           lyr.bindTooltip((ft.properties || {}).name || code, { className: 'lbl', sticky: true });
           lyr.on('click', () => { if (!work) { selectCode(code, (ft.properties || {}).name || ''); status('existing outline ' + code + ' — Edit to change it, Draw to replace'); } });
           n++; }
@@ -341,7 +352,7 @@
     points.clearLayers();
     if (pts.length > 6000 && map.getZoom() < 11) { status(pts.length + ' points — zoom in to see them'); return; }
     const b = map.getBounds().pad(0.3);
-    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { radius: p.kind === 'place' ? 3 : 4, color: saved.has(p.code) ? '#ff7a59' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: 1.5, fillOpacity: .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code, { className: 'lbl', direction: 'top' }); m.on('click', () => { selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
+    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { radius: p.kind === 'place' ? 3 : 4, color: saved.has(p.code) ? '#ff4fa3' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: 1.5, fillOpacity: .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code, { className: 'lbl', direction: 'top' }); m.on('click', () => { selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
   }
   function renderList() {
     const q = $('q').value.trim().toLowerCase(); const box = $('list'); box.innerHTML = '';
@@ -460,7 +471,7 @@
     const file = new File([JSON.stringify(fc, null, 1)], fname, { type: 'application/json' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ files: [file] }); status('shared ' + fname + ' — it belongs in OneDrive/Desktop/ZSS FILES/register/geometry/own'); }
-      catch (e) { if (e.name === 'AbortError') status('not shared — ' + fname + ' is kept on this device (yellow); Save again to share it'); else { downloadFC(fc); } }
+      catch (e) { if (e.name === 'AbortError') status('not shared — ' + fname + ' is kept on this device (lime green); Save again to share it'); else { downloadFC(fc); } }
     } else downloadFC(fc);
     if (work) map.removeLayer(work); work = null; editing = false; $('save').disabled = true; $('dl').disabled = true; $('note').value = '';
     drawPending(); drawPoints();
