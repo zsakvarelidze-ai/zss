@@ -572,7 +572,7 @@
     saved.forEach((ft, c) => { if (ft && ft.geometry && gjContains(ft.geometry, lon, lat) && !hits.some(h => h.code === c)) hits.push({ code: c, name: (ft.properties || {}).name || c, own: true }); });
     return hits.sort((a, b) => b.code.split('.').length - a.code.split('.').length);
   }
-  function known() { const s = new Set(pts.map(p => p.code)); saved.forEach((v, c) => s.add(c)); dotFiles.forEach((v, c) => s.add(c)); Object.keys(pendDots()).forEach(c => s.add(c)); Object.values(BR).forEach(d => d.units.forEach(u => s.add(u.c))); return s; }
+  function known() { const s = new Set(pts.map(p => p.code)); saved.forEach((v, c) => s.add(c)); dotFiles.forEach((v, c) => s.add(c)); Object.keys(pendDots()).forEach(c => s.add(c)); Object.values(BR).forEach(d => d.units.forEach(u => s.add(u.c))); UN.forEach((v, c) => s.add(c)); return s; }
   function nextCode(base) { const n = base.split('.').length + 1; let mx = 0; known().forEach(c => { if (c.startsWith(base + '.') && c.split('.').length === n) mx = Math.max(mx, +c.split('.').pop() || 0); }); return base + '.' + (mx + 1); }
   const pad = (c, len) => { const s = c.split('.').slice(0, len); while (s.length < len) s.push('0'); return s.join('.'); };
   function suggest() {
