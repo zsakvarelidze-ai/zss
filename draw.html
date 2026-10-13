@@ -72,6 +72,13 @@
   }
   @media (pointer: coarse) and (min-width: 821px) { main { grid-template-columns: 1fr 380px; } }
   #pend a { color: var(--accent); }
+  button[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
+  #dot-form { display: grid; gap: 8px; } #dot-form[hidden] { display: none; } #dots label[hidden] { display: none; }
+  .dotpin { width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; border: 2px solid #fff; background: #35f0a0; box-shadow: 0 0 0 1px #000; cursor: grab; }
+  .dotpin.has { background: #ff4fa3; } .dotpin.new { background: #c3f73a; }
+  .dotpin.draft { width: 18px; height: 18px; margin: -9px 0 0 -9px; background: #c3f73a; border-color: #000; box-shadow: 0 0 0 2px #c3f73a; }
+  .leaflet-container.adding { cursor: crosshair; }
+  @media (pointer: coarse) { .dotpin { width: 24px; height: 24px; margin: -12px 0 0 -12px; } .dotpin.draft { width: 28px; height: 28px; margin: -14px 0 0 -14px; } }
 </style>
 </head>
 <body>
@@ -106,6 +113,18 @@
       <div class="row"><button id="places-btn" title="Add the GeoNames settlements of this country as amber points (code at L9, provisional until the outline is saved)">Load GeoNames places</button></div>
       <div class="list" id="list"></div>
       <p class="hint">Green: register rows with a point. Amber: GeoNames places — their code is written at L9, parent + 0 for each skipped tier + n, and becomes a register row when the outline is saved. Pink: already outlined. Or click anywhere on the map with nothing selected and the outline is saved under the parent you type.</p>
+    </div>
+    <div class="card" id="dots">
+      <h2>Dots</h2>
+      <div class="row"><button id="dot-add">Add a dot</button><button id="dot-move" aria-pressed="false">Move dots</button></div>
+      <div id="dot-form" hidden>
+        <div id="dot-in" class="hint"></div>
+        <label>Name <input id="dot-name" placeholder="the place's name, in Latin letters"></label>
+        <label id="dot-kind-l">Kind <select id="dot-kind"><option value="village">village</option><option value="town">town</option><option value="city">city</option><option value="borough">borough (daba)</option><option value="neighbourhood">neighbourhood (part of a city)</option><option value="settlement">settlement (other)</option></select></label>
+        <label>Code <input id="dot-code" class="mono"></label>
+        <div class="row"><button id="dot-save" class="primary">Save dot</button><button id="dot-cancel">Cancel</button></div>
+      </div>
+      <p class="hint" id="dot-hint"><b>Add a dot</b>: tap the map where the place is, give it a name and a kind — the code is filled in from where you tapped; drag the lime dot to fine-tune before saving. <b>Move dots</b>: zoom in and drag any dot, then Save. New and moved dots stay lime until they are in the register.</p>
     </div>
     <div class="card">
       <h2>Outline</h2>
@@ -236,7 +255,7 @@
       const big = u.c.split('.').length <= 8;
       const lyr = L.geoJSON(ft, { style: ownStyle(u.c) }).addTo(neighbours);
       lyr.bindTooltip(u.n || u.c, { className: 'lbl', sticky: true });
-      lyr.on('click', () => { if (!work) { selectCode(u.c, u.n || ''); status('existing outline ' + u.c + ' — Edit to change it, Draw to replace'); } });
+      lyr.on('click', () => { if (!work && !dotMode && !moveOn) { selectCode(u.c, u.n || ''); status('existing outline ' + u.c + ' — Edit to change it, Draw to replace'); } });
     });
     const nb = $('nb'); if (nb) nb.textContent = d.units.length + ' outlines from the published site, drawn in orange.'; renderList();
   }
@@ -279,29 +298,31 @@
   const pendGrp = L.layerGroup();
   function drawPending() {
     if (!map.hasLayer(pendGrp)) pendGrp.addTo(map);
-    pendGrp.clearLayers(); const p = pendAll(), codes = Object.keys(p);
+    pendGrp.clearLayers(); const p = pendAll(), codes = Object.keys(p), dcodes = Object.keys(pendDots());
     for (const code of codes) { const fc = p[code], ft = fc.features ? fc.features[0] : fc; saved.set(code, ft);
       const lyr = L.geoJSON(ft, { style: { color: '#c3f73a', weight: 2, fillOpacity: .08, dashArray: '2 5' } }).addTo(pendGrp);
       lyr.bindTooltip(((ft.properties || {}).name || code) + ' · kept on this device', { className: 'lbl', sticky: true });
-      lyr.on('click', () => { if (!work) { selectCode(code, (ft.properties || {}).name || ''); status(code + ' is kept on this device — Edit to change it, Save to share it again'); } }); }
+      lyr.on('click', () => { if (!work && !dotMode && !moveOn) { selectCode(code, (ft.properties || {}).name || ''); status(code + ' is kept on this device — Edit to change it, Save to share it again'); } }); }
     const el = $('pend'); if (!el) return;
-    el.innerHTML = codes.length ? codes.length + ' outline' + (codes.length > 1 ? 's' : '') + ' kept on this device (lime green): ' + codes.map(esc).join(', ') + '. Once they are in the folder, <a href="#" id="pend-clear">forget them here</a>.' : '';
+    const kept = [codes.length ? codes.length + ' outline' + (codes.length > 1 ? 's' : '') + ': ' + codes.map(esc).join(', ') : '', dcodes.length ? dcodes.length + ' dot' + (dcodes.length > 1 ? 's' : '') + ': ' + dcodes.map(esc).join(', ') : ''].filter(Boolean).join('; ');
+    el.innerHTML = kept ? 'Kept on this device (lime green) — ' + kept + '. Once they are in the folder, <a href="#" id="pend-clear">forget them here</a>.' : '';
     const c = $('pend-clear'); if (c) c.onclick = e => { e.preventDefault();
-      if (c.dataset.sure) { try { localStorage.removeItem(PKEY); } catch (er) {} for (const k of codes) saved.delete(k); drawPending(); status('copies on this device forgotten'); }
+      if (c.dataset.sure) { try { localStorage.removeItem(PKEY); localStorage.removeItem(DKEY); } catch (er) {} for (const k of codes) saved.delete(k); drawPending(); mergeDots(); drawPoints(); renderList(); status('copies on this device forgotten'); }
       else { c.dataset.sure = '1'; c.textContent = 'tap again to forget them — only if the folder has them'; } };
   }
   async function loadNeighbours() {
-    neighbours.clearLayers(); saved.clear();
+    neighbours.clearLayers(); saved.clear(); dotFiles.clear();
     let own; try { own = await ownDir(false); } catch (e) { $('nb').textContent = 'no geometry/own yet — created on first save.'; return; }
     let n = 0;
     for await (const [name, h] of own.entries()) {
+      if (name.endsWith('.dot.json')) { try { const d = JSON.parse(await (await h.getFile()).text()); if (d && d.code && isFinite(d.lat) && isFinite(d.lon)) dotFiles.set(d.code, d); } catch (e) {} continue; }
       if (!name.endsWith('.geojson')) continue;
       try { const f = await h.getFile(); const gj = JSON.parse(await f.text()); const feats = gj.type === 'FeatureCollection' ? gj.features : [gj];
         for (const ft of feats) { const code = (ft.properties || {}).code || name.replace(/\.geojson$/, ''); saved.set(code, ft);
           const big = code.split('.').length <= 8;
           const lyr = L.geoJSON(ft, { style: ownStyle(code), pmIgnore: false }).addTo(neighbours);
           lyr.bindTooltip((ft.properties || {}).name || code, { className: 'lbl', sticky: true });
-          lyr.on('click', () => { if (!work) { selectCode(code, (ft.properties || {}).name || ''); status('existing outline ' + code + ' — Edit to change it, Draw to replace'); } });
+          lyr.on('click', () => { if (!work && !dotMode && !moveOn) { selectCode(code, (ft.properties || {}).name || ''); status('existing outline ' + code + ' — Edit to change it, Draw to replace'); } });
           n++; }
       } catch (e) {}
     }
@@ -328,7 +349,7 @@
       mergeFolderPts(); after(cc + ': ' + pts.length + ' points (dots read from the register folder)');
     } catch (e) { status('dots from the folder: ' + e.message); }
   }
-  function mergeFolderPts() { if (!folderPts.size) return; pts = pts.filter(p => p.kind === 'place' || !folderPts.has(p.code)).concat([...folderPts.values()]); }
+  function mergeFolderPts() { if (folderPts.size) pts = pts.filter(p => p.kind === 'place' || !folderPts.has(p.code)).concat([...folderPts.values()]); mergeDots(); }
 
   // ---- country points: data/pts/<cc>.js (register rows with a point) and, on request,
   //      data/places/<cc>.js (GeoNames settlements under their parent, code = parent.n, provisional)
@@ -351,18 +372,19 @@
   $('places-btn').onclick = () => { const cc = $('cc').value.trim(); if (!cc || placesLoaded) return; loadScript('data/places/' + cc + '.js' + VB, () => status('no places file for ' + cc + ' (countries over 30,000 places are not on the site)')); };
   function drawPoints() {
     points.clearLayers();
+    if (moveOn && map.getZoom() >= 13) { drawPins(); return; }
     if (pts.length > 6000 && map.getZoom() < 11) { status(pts.length + ' points — zoom in to see them'); return; }
     const b = map.getBounds().pad(0.3);
-    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { radius: p.kind === 'place' ? 3 : 4, color: saved.has(p.code) ? '#ff4fa3' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: 1.5, fillOpacity: .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code, { className: 'lbl', direction: 'top' }); m.on('click', () => { selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
+    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { radius: p.fresh ? 5 : p.kind === 'place' ? 3 : 4, color: p.fresh ? '#c3f73a' : saved.has(p.code) ? '#ff4fa3' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: p.fresh ? 2.5 : 1.5, fillOpacity: p.fresh ? .9 : .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code + (p.fresh ? ' · new, not yet in the register' : ''), { className: 'lbl', direction: 'top' }); m.on('click', () => { if (dotMode) return; selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
   }
   function renderList() {
     const q = $('q').value.trim().toLowerCase(); const box = $('list'); box.innerHTML = '';
     const hits = pts.filter(p => !q || p.name.toLowerCase().includes(q) || p.code.includes(q)).slice(0, 200);
-    for (const p of hits) { const d = document.createElement('div'); if (saved.has(p.code)) d.className = 'has'; d.innerHTML = '<span>' + esc(p.name) + (p.kind === 'place' ? ' <span class="pill">place</span>' : '') + '</span><span class="mono">' + p.code + '</span>'; d.onclick = () => { selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }; box.appendChild(d); }
+    for (const p of hits) { const d = document.createElement('div'); if (saved.has(p.code)) d.className = 'has'; d.innerHTML = '<span>' + esc(p.name) + (p.kind === 'place' ? ' <span class="pill">place</span>' : '') + (p.fresh ? ' <span class="pill" style="color:#c3f73a">new</span>' : '') + '</span><span class="mono">' + p.code + '</span>'; d.onclick = () => { selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }; box.appendChild(d); }
     if (!hits.length) box.innerHTML = '<div style="cursor:default;color:var(--dim)">' + (pts.length ? 'no match' : 'enter a country code above, or a code and a point by hand') + '</div>';
   }
   $('q').oninput = renderList;
-  map.on('moveend', () => { if (pts.length > 6000) drawPoints(); });
+  map.on('moveend', () => { if (pts.length > 6000 || moveOn) drawPoints(); });
   $('admsel').onchange = e => { if (e.target.value) editUnit(e.target.value); };
   ['lyr-reg', 'lyr-mun', 'lyr-dis', 'lyr-out', 'lyr-dot', 'lyr-nam'].forEach(id => $(id).onchange = syncLayers);
   $('cc').onchange = e => { pts = []; points.clearLayers(); loadCountry(e.target.value.trim()); };
@@ -481,6 +503,119 @@
   function tryDownload() { const fc = feature(); if (!fc) return; guarded(fc, () => downloadFC(fc), tryDownload); }
   $('save').onclick = trySave;
   $('dl').onclick = tryDownload;
+
+  // ---- dots: put a new dot where a place is, or drag one to where it belongs.
+  // Saved as geometry/own/<code>.dot.json (iPad: the share sheet, same folder); Claude folds them into
+  // points/<cc>.csv and countries/<cc>.csv (new places) and logs every move in POINT-CHANGES.csv.
+  const DKEY = 'zss.trace.pendots', dotFiles = new Map(), draftGrp = L.layerGroup().addTo(map);
+  let dotMode = false, moveOn = false, draft = null, codeTouched = false;
+  function pendDots() { try { return JSON.parse(localStorage.getItem(DKEY) || '{}'); } catch (e) { return {}; } }
+  function pendDotPut(d) { const p = pendDots(); p[d.code] = d; try { localStorage.setItem(DKEY, JSON.stringify(p)); } catch (e) { status('could not keep a copy on this device: ' + e.message); } }
+  function mergeDots() {
+    const all = new Map(Object.entries(pendDots())); dotFiles.forEach((d, c) => all.set(c, d));
+    if (!all.size) return;
+    pts = pts.filter(p => p.kind === 'place' || !all.has(p.code)).concat([...all.values()].map(d => ({ code: d.code, name: d.name, lat: +d.lat, lon: +d.lon, kind: 'row', fresh: true, dot: d })));
+  }
+  function drawPins() {
+    const b = map.getBounds().pad(0.2); let n = 0;
+    for (const p of pts) { if (p.kind === 'place' || !b.contains([p.lat, p.lon])) continue; if (draft && draft.code === p.code) continue; n++;
+      const m = L.marker([p.lat, p.lon], { draggable: true, pmIgnore: true, keyboard: false, icon: L.divIcon({ className: 'dotpin' + (p.fresh ? ' new' : saved.has(p.code) ? ' has' : ''), iconSize: null }) }).addTo(points);
+      m.bindTooltip(p.name + ' · ' + p.code, { className: 'lbl', direction: 'top' });
+      m.on('dragend', () => { const ll = m.getLatLng(); startMove(p, ll); }); }
+    status(n + ' dots you can drag here — drop one where the place is, then Save');
+  }
+  function startMove(p, ll) {
+    const was = p.dot && p.dot.action === 'add' ? null : (p.dot && p.dot.old) || { lat: p.lat, lon: p.lon };
+    draft = { action: p.dot && p.dot.action === 'add' ? 'add' : 'move', code: p.code, name: p.name, kind: (p.dot && p.dot.kind) || null, lat: ll.lat, lon: ll.lng, old: was };
+    const km = was ? Math.hypot((ll.lat - was.lat) * 110.57, (ll.lng - was.lon) * 111.32 * Math.cos(ll.lat * Math.PI / 180)) : 0;
+    showForm(draft.action === 'add' ? 'New dot, not yet in the register.' : 'Moving <b>' + esc(p.name) + '</b> ' + (km < 1 ? Math.round(km * 1000) + ' m' : km.toFixed(2) + ' km') + ' from where it was.', true);
+    drawDraft(); drawPoints();
+  }
+  function drawDraft() {
+    draftGrp.clearLayers(); if (!draft) return;
+    const m = L.marker([draft.lat, draft.lon], { draggable: true, pmIgnore: true, icon: L.divIcon({ className: 'dotpin draft', iconSize: null }) }).addTo(draftGrp);
+    m.bindTooltip(($('dot-name').value || 'new dot') + ' · ' + ($('dot-code').value || ''), { className: 'lbl', direction: 'top' });
+    m.on('dragend', () => { const ll = m.getLatLng(); draft.lat = ll.lat; draft.lon = ll.lng; if (draft.action === 'add') suggest(); });
+  }
+  function showForm(intro, isMove) {
+    $('dot-form').hidden = false; $('dot-in').innerHTML = intro;
+    $('dot-name').value = draft.name || ''; $('dot-code').value = draft.code || ''; $('dot-code').readOnly = isMove && draft.action === 'move';
+    $('dot-kind-l').hidden = draft.action === 'move'; if (draft.kind) $('dot-kind').value = draft.kind;
+    $('dot-save').textContent = draft.action === 'move' ? 'Save the move' : 'Save dot';
+    $('dots').scrollIntoView({ block: 'nearest' });
+  }
+  function closeForm() { draft = null; draftGrp.clearLayers(); $('dot-form').hidden = true; codeTouched = false; drawPoints(); }
+  // which unit a point falls in: the deepest published line, or a traced outline
+  function unitsAt(lat, lon) {
+    const hits = [];
+    Object.values(BR).forEach(d => { if (d.level >= 5) d.units.forEach(u => { const g = unitGJ(u.c); if (g && evenOddContains(g, lon, lat)) hits.push({ code: u.c, name: u.n }); }); });
+    saved.forEach((ft, c) => { if (ft && ft.geometry && gjContains(ft.geometry, lon, lat) && !hits.some(h => h.code === c)) hits.push({ code: c, name: (ft.properties || {}).name || c, own: true }); });
+    return hits.sort((a, b) => b.code.split('.').length - a.code.split('.').length);
+  }
+  function known() { const s = new Set(pts.map(p => p.code)); saved.forEach((v, c) => s.add(c)); dotFiles.forEach((v, c) => s.add(c)); Object.keys(pendDots()).forEach(c => s.add(c)); Object.values(BR).forEach(d => d.units.forEach(u => s.add(u.c))); return s; }
+  function nextCode(base) { const n = base.split('.').length + 1; let mx = 0; known().forEach(c => { if (c.startsWith(base + '.') && c.split('.').length === n) mx = Math.max(mx, +c.split('.').pop() || 0); }); return base + '.' + (mx + 1); }
+  const pad = (c, len) => { const s = c.split('.').slice(0, len); while (s.length < len) s.push('0'); return s.join('.'); };
+  function suggest() {
+    const kind = $('dot-kind').value, lat = draft.lat, lon = draft.lon, hits = unitsAt(lat, lon), target = kind === 'neighbourhood' ? 8 : 9;
+    let note = '', code = '';
+    // a traced settlement outline here that has no dot yet: the dot is for it
+    const out = hits.find(h => h.own && h.code.split('.').length === target && !pts.some(p => p.code === h.code && !p.fresh));
+    if (out) { code = out.code; if (!$('dot-name').value) $('dot-name').value = out.name; note = 'Inside the outline of <b>' + esc(out.name) + '</b>, which has no dot yet — this dot is for it.'; }
+    else {
+      const host = hits.find(h => h.code.split('.').length < target);
+      if (!host) { note = 'Outside every unit on the map — type the code yourself.'; }
+      else {
+        let base = pad(host.code, target - 1);
+        if (target === 9 && host.code.split('.').length <= 6) {   // no community lines: use the community of the nearest dot in the same municipality
+          let best = null, bd = Infinity; const [kx, ky] = KM(lat);
+          pts.forEach(p => { if (p.kind !== 'row' || p.code.split('.').length !== 9 || !p.code.startsWith(host.code + '.')) return; const d = Math.hypot((p.lat - lat) * ky, (p.lon - lon) * kx); if (d < bd) { bd = d; best = p; } });
+          if (best && bd < 8) { base = best.code.split('.').slice(0, 8).join('.'); note = 'In <b>' + esc(host.name) + '</b>; same community as the nearest dot, <b>' + esc(best.name) + '</b> (' + bd.toFixed(1) + ' km).'; }
+          else note = 'In <b>' + esc(host.name) + '</b>; no community found nearby, so the code skips it (0).';
+        } else note = 'In <b>' + esc(host.name) + '</b> <span class="mono">' + esc(host.code) + '</span>.';
+        code = nextCode(base);
+      }
+    }
+    $('dot-in').innerHTML = note + ' <span class="mono">' + lat.toFixed(5) + ', ' + lon.toFixed(5) + '</span>';
+    if (!codeTouched) { $('dot-code').value = code; draft.code = code; }
+    drawDraft();
+  }
+  function startAdd(ll) {
+    draft = { action: 'add', code: '', name: '', kind: null, lat: ll.lat, lon: ll.lng, old: null }; codeTouched = false;
+    const hits = unitsAt(ll.lat, ll.lng); $('dot-kind').value = hits.some(h => h.code.split('.').length === 7 && h.code.startsWith('3.6.5.1.6.1.')) ? 'neighbourhood' : 'village';
+    showForm('', false); suggest(); $('dot-name').focus(); status('name the place, pick its kind, check the code, then Save dot');
+  }
+  $('dot-add').onclick = () => { if (moveOn) $('dot-move').click(); dotMode = !dotMode; map.getContainer().classList.toggle('adding', dotMode); $('dot-add').setAttribute('aria-pressed', String(dotMode));
+    status(dotMode ? 'tap the map where the place is (zoom in first for a good spot)' : 'adding a dot cancelled'); };
+  map.on('click', e => { if (!dotMode || (PM && map.pm.globalDrawModeEnabled())) return; dotMode = false; map.getContainer().classList.remove('adding'); $('dot-add').setAttribute('aria-pressed', 'false'); startAdd(e.latlng); });
+  $('dot-move').onclick = () => { moveOn = !moveOn; $('dot-move').setAttribute('aria-pressed', String(moveOn)); if (dotMode) $('dot-add').click();
+    if (moveOn && map.getZoom() < 13) status('zoom in closer to drag dots'); drawPoints(); };
+  map.on('zoomend', () => { if (moveOn) drawPoints(); });
+  $('dot-kind').onchange = () => { if (draft && draft.action === 'add') suggest(); };
+  $('dot-code').oninput = () => { codeTouched = true; if (draft) draft.code = $('dot-code').value.trim(); };
+  $('dot-name').oninput = () => { if (draft) draft.name = $('dot-name').value; };
+  $('dot-cancel').onclick = () => { closeForm(); status('dot not saved'); };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && dotMode) $('dot-add').click(); });
+  async function saveDot() {
+    if (!draft) return;
+    const code = $('dot-code').value.trim(), name = $('dot-name').value.trim(), kind = draft.action === 'add' ? $('dot-kind').value : (draft.kind || null);
+    if (!/^\d+(\.\d+)+$/.test(code)) { status('the code is digits and dots, e.g. 3.6.5.1.2.3.5.0.4'); return; }
+    if (!name) { status('give the dot a name'); $('dot-name').focus(); return; }
+    if (draft.action === 'add' && pts.some(p => p.code === code && !p.fresh)) { status(code + ' already has a dot — drag that one instead (Move dots)'); return; }
+    const d = { type: 'zss-dot', action: draft.action, code, name, kind, level: code.split('.').length, lat: +draft.lat.toFixed(6), lon: +draft.lon.toFixed(6), old: draft.old,
+      placed_at: new Date().toISOString().slice(0, 10), by: ($('who').value || '').toUpperCase() || null, zoom: map.getZoom(), over: baseName === 'sat' ? 'Esri World Imagery' : baseName === 'osm' ? 'OpenStreetMap' : 'OpenTopoMap' };
+    const fname = code + '.dot.json', text = JSON.stringify(d, null, 1);
+    if (dirHandle) {
+      try { const own = await ownDir(true); const fh = await own.getFileHandle(fname, { create: true }); const w = await fh.createWritable(); await w.write(text); await w.close(); dotFiles.set(code, d); status('saved geometry/own/' + fname); }
+      catch (e) { status('dot not saved: ' + e.message); return; }
+    } else if (NOFS) {
+      pendDotPut(d); const file = new File([text], fname, { type: 'application/json' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file] }); status('shared ' + fname + ' — it belongs in OneDrive/Desktop/ZSS FILES/register/geometry/own'); } catch (e) { status(e.name === 'AbortError' ? 'not shared — the dot is kept on this device (lime); Save again to share it' : 'share failed: ' + e.message); } }
+      else { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fname; a.click(); status('downloaded ' + fname); }
+      drawPending();
+    } else { pendDotPut(d); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fname; a.click(); status('downloaded ' + fname + ' — put it in geometry/own/, or choose the register folder first'); drawPending(); }
+    mergeDots(); closeForm(); renderList();
+  }
+  $('dot-save').onclick = saveDot;
 
   // ---- entry from the URL
   const cc = qs.get('cc') || (qs.get('code') || '').split('.').slice(0, 3).join('.');
