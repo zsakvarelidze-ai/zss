@@ -78,6 +78,11 @@
   .dotpin.has { background: #ff4fa3; } .dotpin.new { background: #c3f73a; }
   .dotpin.draft { width: 18px; height: 18px; margin: -9px 0 0 -9px; background: #c3f73a; border-color: #000; box-shadow: 0 0 0 2px #c3f73a; }
   .leaflet-container.adding { cursor: crosshair; }
+  .udot { width: 12px; height: 12px; margin: -6px 0 0 -6px; border: 2px solid #0b0f12; box-shadow: 0 0 0 1px rgba(255,255,255,.55); border-radius: 2px; cursor: pointer; }
+  .udot.reg { background: #ffd166; width: 18px; height: 18px; margin: -9px 0 0 -9px; } .udot.mun { background: #ffffff; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; }
+  .udot.dis { background: #7cc4ff; } .udot.au { background: #ff9f43; } .udot.nbh { background: #3de0c8; width: 10px; height: 10px; margin: -5px 0 0 -5px; }
+  .udot.none { background: transparent; border-color: #ff9f43; box-shadow: none; }
+  @media (pointer: coarse) { .udot { width: 20px; height: 20px; margin: -10px 0 0 -10px; } .udot.reg { width: 26px; height: 26px; margin: -13px 0 0 -13px; } .udot.mun { width: 23px; height: 23px; margin: -11.5px 0 0 -11.5px; } }
   @media (pointer: coarse) { .dotpin { width: 24px; height: 24px; margin: -12px 0 0 -12px; } .dotpin.draft { width: 28px; height: 28px; margin: -14px 0 0 -14px; } }
 </style>
 </head>
@@ -104,11 +109,12 @@
       <div id="lyrs" style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin:4px 0 6px">
         <label class="lyr"><input type="checkbox" id="lyr-reg" checked> <i style="background:#ffd166"></i>Regions</label>
         <label class="lyr"><input type="checkbox" id="lyr-mun" checked> <i style="background:#ffffff"></i>Municipalities</label>
-        <label class="lyr"><input type="checkbox" id="lyr-dis" checked> <i style="background:#7cc4ff"></i>Districts / units</label>
+        <label class="lyr"><input type="checkbox" id="lyr-dis" checked> <i style="background:#7cc4ff"></i>Districts (Tbilisi)</label>
         <label class="lyr"><input type="checkbox" id="lyr-out" checked> <i style="background:#ff4fa3"></i>Traced outlines</label>
         <label class="lyr"><input type="checkbox" id="lyr-dot" checked> <i style="background:#35f0a0;border-radius:50%"></i>Settlement dots</label>
         <label class="lyr"><input type="checkbox" id="lyr-nam"> <i style="background:transparent;border:1px solid #888"></i>Names</label>
-        <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Your traced outlines are dashed, in the colour of their level; administrative units light blue, neighbourhoods teal, settlements pink.</p>
+        <label class="lyr"><input type="checkbox" id="lyr-udot" checked> <i style="background:#ff9f43;width:9px;height:9px"></i>Unit squares ■</label>
+        <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Colours by level: <b style="color:#ffd166">regions</b>, <b style="color:#fff">municipalities</b>, <b style="color:#7cc4ff">Tbilisi districts</b>, <b style="color:#ff9f43">administrative units (A.U.)</b>, <b style="color:#3de0c8">neighbourhoods</b>, <b style="color:#ff4fa3">settlements</b>. Each unit has a ■ square in its colour (regions from zoom 6, municipalities from 8, A.U.s from 10): tap it to select the unit and edit its line. A hollow ■ (from zoom 11) is an A.U. with no outline yet, placed among its villages — tap it, then Draw.</p>
       </div>
       <div class="row"><button id="places-btn" title="Add the GeoNames settlements of this country as amber points (code at L9, provisional until the outline is saved)">Load GeoNames places</button></div>
       <div class="list" id="list"></div>
@@ -171,12 +177,13 @@
   const NOFS = !window.showDirectoryPicker, PKEY = 'zss.trace.pending';
   // one colour per level, the same for the published line and ZSS's traced outline (traced = dashed):
   // regions gold, municipalities white, Tbilisi districts blue, neighbourhoods teal (filled), settlements pink (filled)
-  const LV = { reg: '#ffd166', mun: '#ffffff', dis: '#7cc4ff', nbh: '#3de0c8', set: '#ff4fa3', pend: '#c3f73a' };
+  const LV = { reg: '#ffd166', mun: '#ffffff', dis: '#7cc4ff', nbh: '#3de0c8', au: '#ff9f43', set: '#ff4fa3', pend: '#c3f73a' };
+  function isAU(code) { const u = UN.get(code); return u ? u.k === 'administrative unit' : !String(code).startsWith('3.6.5.1.6.1.'); }
   function ownStyle(code) {
     const n = String(code).split('.').length;
     if (n <= 5) return { color: LV.reg, weight: 3, opacity: .95, fillOpacity: 0, dashArray: '8 5' };
     if (n === 6) return { color: LV.mun, weight: 2.2, opacity: .95, fillOpacity: 0, dashArray: '6 4' };
-    if (n === 7) return { color: LV.dis, weight: 2, opacity: .95, fillColor: LV.dis, fillOpacity: .07, dashArray: '6 4' };   // districts and administrative units: light blue area
+    if (n === 7) { const c = isAU(code) ? LV.au : LV.dis; return { color: c, weight: 2, opacity: .95, fillColor: c, fillOpacity: .07, dashArray: '6 4' }; }   // Tbilisi districts blue, administrative units orange
     if (n === 8) return { color: LV.nbh, weight: 2.2, opacity: 1, fillColor: LV.nbh, fillOpacity: .14, dashArray: '' };   // neighbourhoods: teal, filled
     return { color: LV.set, weight: 1.6, opacity: .95, fillColor: LV.set, fillOpacity: .12, dashArray: '' };
   }   // NOFS: this browser cannot open folders (iPad, phones)
@@ -206,7 +213,7 @@
       if (u.b && L_ >= 5) L.marker([(u.b[1] + u.b[3]) / 2, (u.b[0] + u.b[2]) / 2], { interactive: false, keyboard: false, pmIgnore: true,
         icon: L.divIcon({ className: 'nm' + (L_ === 5 ? ' r' : L_ >= 7 ? ' d' : ''), html: u.n, iconSize: null }) }).addTo(namGrp);
     }));
-    syncLayers(); fillPicker(); fillUnits();
+    syncLayers(); fillPicker(); fillUnits(); drawUnitDots();
   }
   function unitByCode(code) { for (const d of Object.values(BR)) for (const u of d.units) if (u.c === code) return { u, level: d.level }; return null; }
   function fillPicker() {
@@ -257,6 +264,54 @@
     if (lyr.pm) lyr.pm.enable({ allowSelfIntersection: true, snappable: true });
     status('moving the border of ' + nm + ' — drag vertices (click an edge midpoint to add one), then Save. Neighbours follow when the map is rebuilt.');
   }
+  // ---- unit squares: one ■ per region, municipality, Tbilisi district, A.U. and neighbourhood, in its colour; tap to edit
+  const udots = L.layerGroup().addTo(map), UPT = new Map();
+  function interiorPoint(ring) {   // ring: [[lat, lon], ...] — the middle of the widest stretch across it
+    let s = 90, n = -90; ring.forEach(p => { s = Math.min(s, p[0]); n = Math.max(n, p[0]); });
+    let best = null, bw = -1;
+    for (const f of [.5, .4, .6, .3, .7, .2, .8]) { const y = s + (n - s) * f, xs = [];
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const a = ring[i], b = ring[j];
+        if ((a[0] > y) !== (b[0] > y)) xs.push(a[1] + (y - a[0]) * (b[1] - a[1]) / (b[0] - a[0])); }
+      xs.sort((p, q) => p - q);
+      for (let k = 0; k + 1 < xs.length; k += 2) if (xs[k + 1] - xs[k] > bw) { bw = xs[k + 1] - xs[k]; best = [y, (xs[k] + xs[k + 1]) / 2]; }
+      if (best && f === .5) break; }
+    return best;
+  }
+  const ringAreaLL = r => { let a = 0; for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][1] + r[i][1]) * (r[j][0] - r[i][0]); return Math.abs(a); };
+  function bigRingPoint(rings) { if (!rings.length) return null; let b = rings[0]; rings.forEach(r => { if (ringAreaLL(r) > ringAreaLL(b)) b = r; }); return interiorPoint(b); }
+  function unitPoint(code) {
+    if (UPT.has(code)) return UPT.get(code); let p = null;
+    const ft = saved.get(code);
+    if (ft && ft.geometry) { const g = ft.geometry, polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+      p = bigRingPoint(polys.map(q => q[0].map(c => [c[1], c[0]]))); }
+    if (!p) { const hit = unitByCode(code); if (hit) p = bigRingPoint(hit.u.r.map(ringLL)); }
+    if (p) UPT.set(code, p); return p;
+  }
+  function drawUnitDots() {
+    udots.clearLayers(); if (!$('lyr-udot').checked) return;
+    const z = map.getZoom(), b = map.getBounds().pad(0.3), done = new Set();
+    const add = (p, code, name, cls, label) => {
+      if (!p || done.has(code) || !b.contains(p)) return; done.add(code);
+      const m = L.marker(p, { pmIgnore: true, keyboard: false, zIndexOffset: 500, icon: L.divIcon({ className: 'udot ' + cls, iconSize: null }) }).addTo(udots);
+      m.bindTooltip(name + ' · ' + label + ' · ' + code, { className: 'lbl', direction: 'top' });
+      m.on('click', () => { if (dotMode || moveOn) return;
+        if (UN.has(code) && !unitByCode(code)) { $('unitsel').value = code; $('admsel').value = ''; } else { $('admsel').value = code; $('unitsel').value = ''; }
+        editUnit(code); });
+    };
+    Object.values(BR).forEach(d => { if (d.level < 5) return;
+      const minz = d.level === 5 ? 6 : d.level === 6 ? 8 : 10; if (z < minz) return;
+      d.units.forEach(u => add(unitPoint(u.c), u.c, u.n, d.level === 5 ? 'reg' : d.level === 6 ? 'mun' : d.level === 7 ? 'dis' : 'nbh', d.level === 5 ? 'region' : d.level === 6 ? 'municipality' : d.level === 7 ? 'Tbilisi district' : 'neighbourhood')); });
+    if (z < 10) return;
+    UN.forEach((v, c) => {
+      if (done.has(c)) return;
+      if (v.k === 'administrative unit') {
+        let p = unitPoint(c), cls = 'au';
+        if (!p) { if (z < 11) return; const own = pts.filter(q => q.kind === 'row' && q.code.startsWith(c + '.')); if (!own.length) return; cls = 'au none';
+          p = [own.reduce((a, q) => a + q.lat, 0) / own.length, own.reduce((a, q) => a + q.lon, 0) / own.length]; }
+        add(p, c, v.n, cls, cls === 'au' ? 'A.U.' : 'A.U., no outline yet');
+      } else if (saved.has(c)) add(unitPoint(c), c, v.n, c.split('.').length === 8 ? 'nbh' : 'dis', v.k);
+    });
+  }
   function syncLayers() {
     [['lyr-reg', regGrp], ['lyr-mun', munGrp], ['lyr-dis', disGrp], ['lyr-out', neighbours], ['lyr-dot', points], ['lyr-nam', namGrp]].forEach(([id, g]) => {
       const on = $(id).checked; if (on && !map.hasLayer(g)) g.addTo(map); if (!on && map.hasLayer(g)) map.removeLayer(g); });
@@ -270,11 +325,11 @@
       const ft = { type: 'Feature', properties: { code: u.c, name: u.n }, geometry: { type: 'Polygon', coordinates: rings } };
       saved.set(u.c, ft);
       const big = u.c.split('.').length <= 8;
-      const lyr = L.geoJSON(ft, { style: ownStyle(u.c) }).addTo(neighbours);
+      const lyr = L.geoJSON(ft, { style: ownStyle(u.c) }).addTo(neighbours); lyr._zcode = u.c;
       lyr.bindTooltip(u.n || u.c, { className: 'lbl', sticky: true });
       lyr.on('click', () => { if (!work && !dotMode && !moveOn) { selectCode(u.c, u.n || ''); status('existing outline ' + u.c + ' — Edit to change it, Draw to replace'); } });
     });
-    const nb = $('nb'); if (nb) nb.textContent = d.units.length + ' outlines from the published site, drawn in orange.'; renderList(); fillUnits();
+    const nb = $('nb'); if (nb) nb.textContent = d.units.length + ' outlines from the published site, drawn in orange.'; renderList(); fillUnits(); UPT.clear(); drawUnitDots();
   }
   function loadBranch(code) {
     if (brWant[code]) return; brWant[code] = true;
@@ -337,13 +392,13 @@
       try { const f = await h.getFile(); const gj = JSON.parse(await f.text()); const feats = gj.type === 'FeatureCollection' ? gj.features : [gj];
         for (const ft of feats) { const code = (ft.properties || {}).code || name.replace(/\.geojson$/, ''); saved.set(code, ft);
           const big = code.split('.').length <= 8;
-          const lyr = L.geoJSON(ft, { style: ownStyle(code), pmIgnore: false }).addTo(neighbours);
+          const lyr = L.geoJSON(ft, { style: ownStyle(code), pmIgnore: false }).addTo(neighbours); lyr._zcode = code;
           lyr.bindTooltip((ft.properties || {}).name || code, { className: 'lbl', sticky: true });
           lyr.on('click', () => { if (!work && !dotMode && !moveOn) { selectCode(code, (ft.properties || {}).name || ''); status('existing outline ' + code + ' — Edit to change it, Draw to replace'); } });
           n++; }
       } catch (e) {}
     }
-    $('nb').textContent = n + ' outline' + (n === 1 ? '' : 's') + ' already in the folder, drawn in orange.'; renderList(); fillUnits();
+    $('nb').textContent = n + ' outline' + (n === 1 ? '' : 's') + ' already in the folder, drawn in orange.'; renderList(); fillUnits(); UPT.clear(); drawUnitDots();
     await folderPoints();
   }
   // dots straight from the register folder (points/<cc>.csv, names from countries/<cc>.csv), so a new
@@ -375,7 +430,7 @@
     branch: d => { BR[d.code] = d; d.units.forEach(u => { if (!u.leaf && d.level < 8) loadBranch(u.c); }); drawAdmin(); },
     own: d => siteOwn(d),
     pts: d => { pts = pts.filter(p => p.kind === 'place').concat((d.pts || []).map(p => ({ code: p[0], name: p[1], lat: p[2], lon: p[3], kind: 'row' }))); mergeFolderPts(); after(d.code + ': ' + pts.length + ' points'); },
-    units: d => { UN.clear(); (d.units || []).forEach(u => UN.set(u[0], { n: u[1], k: u[2] })); fillUnits(); },
+    units: d => { UN.clear(); (d.units || []).forEach(u => UN.set(u[0], { n: u[1], k: u[2] })); fillUnits(); neighbours.eachLayer(l => { if (l._zcode) l.setStyle(ownStyle(l._zcode)); }); drawUnitDots(); },
     places: d => { placesLoaded = true; pts = pts.concat((d.places || []).map(p => ({ code: p[0] + '.0'.repeat(Math.max(0, 8 - p[0].split('.').length)) + '.' + p[1], name: p[2], lat: p[3], lon: p[4], kind: 'place', fcode: p[5] }))); after(d.code + ': ' + pts.length + ' points incl. GeoNames places'); }
   };
   function after(msg) { drawPoints(); setTimeout(() => { map.invalidateSize(); drawPoints(); }, 50); renderList(); status(msg); if (!qs.get('lat') && pts.length && !fitted) { fitted = true; map.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lon])).pad(0.05)); } }
@@ -403,10 +458,11 @@
     if (!hits.length) box.innerHTML = '<div style="cursor:default;color:var(--dim)">' + (pts.length ? 'no match' : 'enter a country code above, or a code and a point by hand') + '</div>';
   }
   $('q').oninput = renderList;
-  map.on('moveend', () => { if (pts.length > 6000 || moveOn) drawPoints(); });
+  map.on('moveend', () => { if (pts.length > 6000 || moveOn) drawPoints(); drawUnitDots(); });
   $('admsel').onchange = e => { if (e.target.value) { $('unitsel').value = ''; editUnit(e.target.value); } };
   $('unitsel').onchange = e => { if (e.target.value) { $('admsel').value = ''; editUnit(e.target.value); } };
   ['lyr-reg', 'lyr-mun', 'lyr-dis', 'lyr-out', 'lyr-dot', 'lyr-nam'].forEach(id => $(id).onchange = syncLayers);
+  $('lyr-udot').onchange = drawUnitDots;
   $('cc').onchange = e => { pts = []; points.clearLayers(); loadCountry(e.target.value.trim()); };
 
   // ---- selection and the working polygon
