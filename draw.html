@@ -360,9 +360,9 @@
   async function folderPoints() {
     const cc = $('cc').value.trim(); if (!dirHandle || !cc) return;
     try {
-      const names = new Map((await readCsv('countries', cc + '.csv')).map(r => [r.code, r.name]));
+      const crow = await readCsv('countries', cc + '.csv'), names = new Map(crow.map(r => [r.code, r.name])), retired = new Set(crow.filter(r => r.superseded_by).map(r => r.code));
       folderPts = new Map();
-      (await readCsv('points', cc + '.csv')).forEach(r => { const la = +r.lat, lo = +r.lon; if (r.code && isFinite(la) && isFinite(lo) && r.lat !== '') folderPts.set(r.code, { code: r.code, name: names.get(r.code) || r.code, lat: la, lon: lo, kind: 'row' }); });
+      (await readCsv('points', cc + '.csv')).forEach(r => { const la = +r.lat, lo = +r.lon; if (r.code && !retired.has(r.code) && isFinite(la) && isFinite(lo) && r.lat !== '') folderPts.set(r.code, { code: r.code, name: names.get(r.code) || r.code, lat: la, lon: lo, kind: 'row' }); });
       mergeFolderPts(); after(cc + ': ' + pts.length + ' points (dots read from the register folder)');
     } catch (e) { status('dots from the folder: ' + e.message); }
   }
