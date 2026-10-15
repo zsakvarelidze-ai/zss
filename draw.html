@@ -202,7 +202,7 @@
   const munGrp = L.layerGroup().addTo(map), disGrp = L.layerGroup().addTo(map), regGrp = L.layerGroup().addTo(map), namGrp = L.layerGroup();   // reference lines from data/b
   const VB = '?v=' + Date.now();   // always the latest lines: a cached region file next to a fresh municipality file drew them apart
   function ringLL(r) { const v = r.split(' '); let x = +v[0], y = +v[1]; const out = [[y / 1e4, x / 1e4]]; for (let i = 2; i + 1 < v.length; i += 2) { x += +v[i]; y += +v[i + 1]; out.push([y / 1e4, x / 1e4]); } return out; }
-  const BR = {}, brWant = {}, UN = new Map();   // UN: administrative units and districts of the register (data/units/<cc>.js)
+  const BR = {}, brWant = {}, UN = new Map(), UNR = new Set();   // UNR: codes of retired units, never offered again   // UN: administrative units and districts of the register (data/units/<cc>.js)
   function drawAdmin() {
     [munGrp, disGrp, regGrp, namGrp].forEach(g => g.clearLayers());
     Object.values(BR).forEach(d => d.units.forEach(u => {
@@ -430,7 +430,7 @@
     branch: d => { BR[d.code] = d; d.units.forEach(u => { if (!u.leaf && d.level < 8) loadBranch(u.c); }); drawAdmin(); },
     own: d => siteOwn(d),
     pts: d => { pts = pts.filter(p => p.kind === 'place').concat((d.pts || []).map(p => ({ code: p[0], name: p[1], lat: p[2], lon: p[3], kind: 'row' }))); mergeFolderPts(); after(d.code + ': ' + pts.length + ' points'); },
-    units: d => { UN.clear(); (d.units || []).forEach(u => UN.set(u[0], { n: u[1], k: u[2] })); fillUnits(); neighbours.eachLayer(l => { if (l._zcode) l.setStyle(ownStyle(l._zcode)); }); drawUnitDots(); },
+    units: d => { UN.clear(); UNR.clear(); (d.units || []).forEach(u => u[3] ? UNR.add(u[0]) : UN.set(u[0], { n: u[1], k: u[2] })); fillUnits(); neighbours.eachLayer(l => { if (l._zcode) l.setStyle(ownStyle(l._zcode)); }); drawUnitDots(); },
     places: d => { placesLoaded = true; pts = pts.concat((d.places || []).map(p => ({ code: p[0] + '.0'.repeat(Math.max(0, 8 - p[0].split('.').length)) + '.' + p[1], name: p[2], lat: p[3], lon: p[4], kind: 'place', fcode: p[5] }))); after(d.code + ': ' + pts.length + ' points incl. GeoNames places'); }
   };
   function after(msg) { drawPoints(); setTimeout(() => { map.invalidateSize(); drawPoints(); }, 50); renderList(); status(msg); if (!qs.get('lat') && pts.length && !fitted) { fitted = true; map.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lon])).pad(0.05)); } }
@@ -628,7 +628,7 @@
     saved.forEach((ft, c) => { if (ft && ft.geometry && gjContains(ft.geometry, lon, lat) && !hits.some(h => h.code === c)) hits.push({ code: c, name: (ft.properties || {}).name || c, own: true }); });
     return hits.sort((a, b) => b.code.split('.').length - a.code.split('.').length);
   }
-  function known() { const s = new Set(pts.map(p => p.code)); saved.forEach((v, c) => s.add(c)); dotFiles.forEach((v, c) => s.add(c)); Object.keys(pendDots()).forEach(c => s.add(c)); Object.values(BR).forEach(d => d.units.forEach(u => s.add(u.c))); UN.forEach((v, c) => s.add(c)); return s; }
+  function known() { const s = new Set(pts.map(p => p.code)); saved.forEach((v, c) => s.add(c)); dotFiles.forEach((v, c) => s.add(c)); Object.keys(pendDots()).forEach(c => s.add(c)); Object.values(BR).forEach(d => d.units.forEach(u => s.add(u.c))); UN.forEach((v, c) => s.add(c)); UNR.forEach(c => s.add(c)); return s; }
   function nextCode(base) { const n = base.split('.').length + 1; let mx = 0; known().forEach(c => { if (c.startsWith(base + '.') && c.split('.').length === n) mx = Math.max(mx, +c.split('.').pop() || 0); }); return base + '.' + (mx + 1); }
   const pad = (c, len) => { const s = c.split('.').slice(0, len); while (s.length < len) s.push('0'); return s.join('.'); };
   function suggest() {
