@@ -556,7 +556,18 @@
   $('guard-cancel').onclick = () => { closeGuard(); if (work && work.pm) work.pm.enable({ allowSelfIntersection: true, snappable: true }); status('not saved — fix the shape or pick the right settlement, then Save'); };
   $('guard-go').onclick = () => { const go = guardGo; closeGuard(); if (go) go(); };
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('guard').classList.contains('on')) { closeGuard(); status('not saved'); } });
-  function guarded(fc, go, retry) { const r = checkSave(fc); if (!r.probs.length) return go(); status('check before saving: ' + r.probs.length + ' thing' + (r.probs.length > 1 ? 's' : '') + ' to look at'); openGuard(r, go, retry); }
+  // what the register folder holds right now under a code (the page may have been opened before it changed)
+  async function folderName(code) {
+    if (!dirHandle) return null;
+    try { const own = await ownDir(false);
+      for (const ext of ['.geojson', '.dot.json']) { try { const fh = await own.getFileHandle(code + ext); const j = JSON.parse(await (await fh.getFile()).text());
+        const ft = j.features ? j.features[0] : j; const n = ((ft && ft.properties) ? ft.properties.name : j.name) || ''; if (n) return n; } catch (e) {} }
+    } catch (e) {} return null;
+  }
+  const sameName = (a, b) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
+  async function guarded(fc, go, retry) { const r = checkSave(fc);
+    const held = await folderName(r.code); if (held && !sameName(held, r.name)) r.probs.unshift('Your folder already has <b>' + esc(held) + '</b> under ' + esc(r.code) + '. Saving puts this shape in its place. Reload the page (it may be out of date) and give this place its own dot first.');
+    if (!r.probs.length) return go(); status('check before saving: ' + r.probs.length + ' thing' + (r.probs.length > 1 ? 's' : '') + ' to look at'); openGuard(r, go, retry); }
   async function writeFC(fc) {
     try { const own = await ownDir(true); const code = fc.features[0].properties.code; const fh = await own.getFileHandle(code + '.geojson', { create: true }); const w = await fh.createWritable(); await w.write(JSON.stringify(fc, null, 1)); await w.close();
       status('saved geometry/own/' + code + '.geojson'); if (work) map.removeLayer(work); work = null; editing = false; $('save').disabled = true; $('dl').disabled = true; $('note').value = ''; await loadNeighbours(); drawPoints(); }
@@ -678,6 +689,10 @@
     if (!/^\d+(\.\d+)+$/.test(code)) { status('the code is digits and dots, e.g. 3.6.5.1.2.3.5.0.4'); return; }
     if (!name) { status('give the dot a name'); $('dot-name').focus(); return; }
     if (draft.action === 'add' && pts.some(p => p.code === code && !p.fresh)) { status(code + ' already has a dot — drag that one instead (Move dots)'); return; }
+    if (draft.action === 'add') { const held = await folderName(code);
+      if (held && !sameName(held, name)) { let c2 = code; const pre = code.split('.').slice(0, -1).join('.'); let k = +code.split('.').pop();
+        do { k++; c2 = pre + '.' + k; } while (known().has(c2) || await folderName(c2));
+        $('dot-code').value = c2; draft.code = c2; codeTouched = true; status(code + ' is already ' + held + ' in your folder — the code is now ' + c2 + '; press Save dot again'); return; } }
     const d = { type: 'zss-dot', action: draft.action, code, name, kind, level: code.split('.').length, lat: +draft.lat.toFixed(6), lon: +draft.lon.toFixed(6), old: draft.old,
       placed_at: new Date().toISOString().slice(0, 10), by: ($('who').value || '').toUpperCase() || null, zoom: map.getZoom(), over: baseName === 'sat' ? 'Esri World Imagery' : baseName === 'osm' ? 'OpenStreetMap' : 'OpenTopoMap' };
     const fname = code + '.dot.json', text = JSON.stringify(d, null, 1);
