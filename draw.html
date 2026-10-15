@@ -658,7 +658,7 @@
   }
   function startAdd(ll) {
     draft = { action: 'add', code: '', name: '', kind: null, lat: ll.lat, lon: ll.lng, old: null }; codeTouched = false;
-    const hits = unitsAt(ll.lat, ll.lng); $('dot-kind').value = hits.some(h => h.code.split('.').length === 7 && h.code.startsWith('3.6.5.1.6.1.')) ? 'neighbourhood' : 'village';
+    const hits = unitsAt(ll.lat, ll.lng); $('dot-kind').value = hits.some(h => h.code.split('.').length === 7 && h.code.startsWith('3.6.5.1.6.1.')) ? 'settlement' : 'village';   // Tbilisi: district, then settlements (district.0.n)
     showForm('', false); suggest(); $('dot-name').focus(); status('name the place, pick its kind, check the code, then Save dot');
   }
   $('dot-add').onclick = () => { if (moveOn) $('dot-move').click(); dotMode = !dotMode; map.getContainer().classList.toggle('adding', dotMode); $('dot-add').setAttribute('aria-pressed', String(dotMode));
