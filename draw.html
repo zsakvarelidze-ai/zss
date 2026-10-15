@@ -294,7 +294,7 @@
       if (!p || done.has(code) || !b.contains(p)) return; done.add(code);
       const m = L.marker(p, { pmIgnore: true, keyboard: false, zIndexOffset: 500, icon: L.divIcon({ className: 'udot ' + cls, iconSize: null }) }).addTo(udots);
       m.bindTooltip(name + ' · ' + label + ' · ' + code, { className: 'lbl', direction: 'top' });
-      m.on('click', () => { if (dotMode || moveOn) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } 
+      m.on('click', () => { if (dotMode || moveOn || drawingNow()) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } 
         if (UN.has(code) && !unitByCode(code)) { $('unitsel').value = code; $('admsel').value = ''; } else { $('admsel').value = code; $('unitsel').value = ''; }
         editUnit(code); });
     };
@@ -327,7 +327,7 @@
       const big = u.c.split('.').length <= 8;
       const lyr = L.geoJSON(ft, { style: ownStyle(u.c) }).addTo(neighbours); lyr._zcode = u.c;
       lyr.bindTooltip(u.n || u.c, { className: 'lbl', sticky: true });
-      lyr.on('click', () => { if (!work && !dotMode && !moveOn) { selectCode(u.c, u.n || ''); status('existing outline ' + u.c + ' — Edit to change it, Draw to replace'); } });
+      lyr.on('click', () => { if (!work && !dotMode && !moveOn && !drawingNow()) { selectCode(u.c, u.n || ''); status('existing outline ' + u.c + ' — Edit to change it, Draw to replace'); } });
     });
     const nb = $('nb'); if (nb) nb.textContent = d.units.length + ' outlines from the published site, drawn in orange.'; renderList(); fillUnits(); UPT.clear(); drawUnitDots();
   }
@@ -336,6 +336,7 @@
     loadScript('data/b/' + code.replace(/\./g, '_') + '.js' + VB, () => {});
   }           // ring on the selected settlement, always shown
   let work = null;                                      // the polygon being drawn or edited
+  const drawingNow = () => !!(PM && map.pm && map.pm.globalDrawModeEnabled());   // vertex clicks must not pick the outline underneath
   const PM = !!map.pm;
   if (!PM) status('drawing tools did not load (unpkg.com unreachable) — the map and the list still work');
   if (PM) map.pm.setGlobalOptions({ snappable: true, snapDistance: matchMedia('(pointer: coarse)').matches ? 26 : 14, allowSelfIntersection: false, templineStyle: { color: '#35f0a0' }, hintlineStyle: { color: '#35f0a0', dashArray: '4 4' }, pathOptions: { color: '#35f0a0', weight: 2, fillOpacity: .12 } });
@@ -374,7 +375,7 @@
     for (const code of codes) { const fc = p[code], ft = fc.features ? fc.features[0] : fc; saved.set(code, ft);
       const lyr = L.geoJSON(ft, { style: { color: '#c3f73a', weight: 2, fillOpacity: .08, dashArray: '2 5' } }).addTo(pendGrp);
       lyr.bindTooltip(((ft.properties || {}).name || code) + ' · kept on this device', { className: 'lbl', sticky: true });
-      lyr.on('click', () => { if (!work && !dotMode && !moveOn) { selectCode(code, (ft.properties || {}).name || ''); status(code + ' is kept on this device — Edit to change it, Save to share it again'); } }); }
+      lyr.on('click', () => { if (!work && !dotMode && !moveOn && !drawingNow()) { selectCode(code, (ft.properties || {}).name || ''); status(code + ' is kept on this device — Edit to change it, Save to share it again'); } }); }
     const el = $('pend'); if (!el) return;
     const kept = [codes.length ? codes.length + ' outline' + (codes.length > 1 ? 's' : '') + ': ' + codes.map(esc).join(', ') : '', dcodes.length ? dcodes.length + ' dot' + (dcodes.length > 1 ? 's' : '') + ': ' + dcodes.map(esc).join(', ') : ''].filter(Boolean).join('; ');
     el.innerHTML = kept ? 'Kept on this device (lime green) — ' + kept + '. Once they are in the folder, <a href="#" id="pend-clear">forget them here</a>.' : '';
@@ -394,7 +395,7 @@
           const big = code.split('.').length <= 8;
           const lyr = L.geoJSON(ft, { style: ownStyle(code), pmIgnore: false }).addTo(neighbours); lyr._zcode = code;
           lyr.bindTooltip((ft.properties || {}).name || code, { className: 'lbl', sticky: true });
-          lyr.on('click', () => { if (!work && !dotMode && !moveOn) { selectCode(code, (ft.properties || {}).name || ''); status('existing outline ' + code + ' — Edit to change it, Draw to replace'); } });
+          lyr.on('click', () => { if (!work && !dotMode && !moveOn && !drawingNow()) { selectCode(code, (ft.properties || {}).name || ''); status('existing outline ' + code + ' — Edit to change it, Draw to replace'); } });
           n++; }
       } catch (e) {}
     }
@@ -449,7 +450,7 @@
     if (moveOn && map.getZoom() >= 13) { drawPins(); return; }
     if (pts.length > 6000 && map.getZoom() < 11) { status(pts.length + ' points — zoom in to see them'); return; }
     const b = map.getBounds().pad(0.3);
-    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { radius: p.fresh ? 5 : p.kind === 'place' ? 3 : 4, color: p.fresh ? '#c3f73a' : saved.has(p.code) ? '#ff4fa3' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: p.fresh ? 2.5 : 1.5, fillOpacity: p.fresh ? .9 : .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code + (p.fresh ? ' · new, not yet in the register' : ''), { className: 'lbl', direction: 'top' }); m.on('click', () => { if (dotMode) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
+    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { radius: p.fresh ? 5 : p.kind === 'place' ? 3 : 4, color: p.fresh ? '#c3f73a' : saved.has(p.code) ? '#ff4fa3' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: p.fresh ? 2.5 : 1.5, fillOpacity: p.fresh ? .9 : .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code + (p.fresh ? ' · new, not yet in the register' : ''), { className: 'lbl', direction: 'top' }); m.on('click', () => { if (dotMode || drawingNow()) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
   }
   function renderList() {
     const q = $('q').value.trim().toLowerCase(); const box = $('list'); box.innerHTML = '';
@@ -475,7 +476,7 @@
     if (work) { work.setStyle({ color: '#35f0a0', weight: 2, fillOpacity: .12 }); work.on('pm:edit', () => status('edited — Save when done')); }
   }
   let editing = false;
-  $('draw').onclick = () => { editing = false; if ($('admsel').value) { $('admsel').value = ''; const c = $('code').value.trim(); if (c && unitByCode(c)) { $('code').value = ''; $('name').value = ''; $('sel').textContent = 'nothing selected'; sel = null; selMark.clearLayers(); } } if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; } if (work) { map.removeLayer(work); work = null; } map.pm.enableDraw('Polygon', { snappable: true, finishOn: null }); status('click vertices; click the first vertex to close (double-click also finishes)'); };
+  $('draw').onclick = () => { editing = false; if ($('admsel').value) { $('admsel').value = ''; const c = $('code').value.trim(); if (c && unitByCode(c)) { $('code').value = ''; $('name').value = ''; $('sel').textContent = 'nothing selected'; sel = null; selMark.clearLayers(); } } if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; } if (work) { map.removeLayer(work); work = null; } map.pm.enableDraw('Polygon', { snappable: true, finishOn: null }); status('click vertices; click the first vertex to close (double-click also finishes) — it will be saved as ' + ($('code').value.trim() ? $('name').value.trim() + ' ' + $('code').value.trim() : '(pick or type a code before Save)')); };
   map.on('pm:create', e => { map.pm.disableDraw(); setWork(e.layer); status('outline closed — check it, then Save'); });
   $('edit').onclick = () => { editing = true; if (work) { if (work.pm) work.pm.enable({ allowSelfIntersection: true, snappable: true }); status('drag vertices; click the midpoint of an edge to add one'); return; } const code = $('code').value.trim(); const ft = saved.get(code); if (!ft) { if (unitByCode(code)) { editUnit(code); return; } status('nothing to edit — draw first, or select an orange outline'); return; } const lyr = L.geoJSON(ft).getLayers()[0]; lyr.addTo(map); setWork(lyr); if (lyr.pm) lyr.pm.enable({ allowSelfIntersection: true, snappable: true }); status('editing the saved outline of ' + code); };
   $('clear').onclick = () => { if (PM) map.pm.disableDraw(); if (work) { map.removeLayer(work); work = null; } $('save').disabled = true; $('dl').disabled = true; status('discarded'); };
@@ -689,6 +690,7 @@
       else { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fname; a.click(); status('downloaded ' + fname); }
       drawPending();
     } else { pendDotPut(d); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fname; a.click(); status('downloaded ' + fname + ' — put it in geometry/own/, or choose the register folder first'); drawPending(); }
+    if (draft.action === 'add') { $('admsel').value = ''; $('unitsel').value = ''; selectCode(code, name, draft.lat, draft.lon); }   // Draw next traces this place, not what was selected before
     mergeDots(); closeForm(); renderList();
   }
   $('dot-save').onclick = saveDot;
