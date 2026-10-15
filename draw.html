@@ -294,7 +294,7 @@
       if (!p || done.has(code) || !b.contains(p)) return; done.add(code);
       const m = L.marker(p, { pmIgnore: true, keyboard: false, zIndexOffset: 500, icon: L.divIcon({ className: 'udot ' + cls, iconSize: null }) }).addTo(udots);
       m.bindTooltip(name + ' · ' + label + ' · ' + code, { className: 'lbl', direction: 'top' });
-      m.on('click', () => { if (dotMode || moveOn) return;
+      m.on('click', () => { if (dotMode || moveOn) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } 
         if (UN.has(code) && !unitByCode(code)) { $('unitsel').value = code; $('admsel').value = ''; } else { $('admsel').value = code; $('unitsel').value = ''; }
         editUnit(code); });
     };
@@ -449,12 +449,12 @@
     if (moveOn && map.getZoom() >= 13) { drawPins(); return; }
     if (pts.length > 6000 && map.getZoom() < 11) { status(pts.length + ' points — zoom in to see them'); return; }
     const b = map.getBounds().pad(0.3);
-    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { radius: p.fresh ? 5 : p.kind === 'place' ? 3 : 4, color: p.fresh ? '#c3f73a' : saved.has(p.code) ? '#ff4fa3' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: p.fresh ? 2.5 : 1.5, fillOpacity: p.fresh ? .9 : .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code + (p.fresh ? ' · new, not yet in the register' : ''), { className: 'lbl', direction: 'top' }); m.on('click', () => { if (dotMode) return; selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
+    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { radius: p.fresh ? 5 : p.kind === 'place' ? 3 : 4, color: p.fresh ? '#c3f73a' : saved.has(p.code) ? '#ff4fa3' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: p.fresh ? 2.5 : 1.5, fillOpacity: p.fresh ? .9 : .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code + (p.fresh ? ' · new, not yet in the register' : ''), { className: 'lbl', direction: 'top' }); m.on('click', () => { if (dotMode) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
   }
   function renderList() {
     const q = $('q').value.trim().toLowerCase(); const box = $('list'); box.innerHTML = '';
     const hits = pts.filter(p => !q || p.name.toLowerCase().includes(q) || p.code.includes(q)).slice(0, 200);
-    for (const p of hits) { const d = document.createElement('div'); if (saved.has(p.code)) d.className = 'has'; d.innerHTML = '<span>' + esc(p.name) + (p.kind === 'place' ? ' <span class="pill">place</span>' : '') + (p.fresh ? ' <span class="pill" style="color:#c3f73a">new</span>' : '') + '</span><span class="mono">' + p.code + '</span>'; d.onclick = () => { selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }; box.appendChild(d); }
+    for (const p of hits) { const d = document.createElement('div'); if (saved.has(p.code)) d.className = 'has'; d.innerHTML = '<span>' + esc(p.name) + (p.kind === 'place' ? ' <span class="pill">place</span>' : '') + (p.fresh ? ' <span class="pill" style="color:#c3f73a">new</span>' : '') + '</span><span class="mono">' + p.code + '</span>'; d.onclick = () => { if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }; box.appendChild(d); }
     if (!hits.length) box.innerHTML = '<div style="cursor:default;color:var(--dim)">' + (pts.length ? 'no match' : 'enter a country code above, or a code and a point by hand') + '</div>';
   }
   $('q').oninput = renderList;
