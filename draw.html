@@ -82,7 +82,8 @@
   .udot.reg { background: #ffd166; width: 18px; height: 18px; margin: -9px 0 0 -9px; } .udot.mun { background: #ffffff; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; }
   .udot.dis { background: #7cc4ff; } .udot.au { background: #ff9f43; } .udot.nbh { background: #3de0c8; width: 10px; height: 10px; margin: -5px 0 0 -5px; }
   .udot.none { background: transparent; border-color: #ff9f43; box-shadow: none; }
-  @media (pointer: coarse) { .udot { width: 20px; height: 20px; margin: -10px 0 0 -10px; } .udot.reg { width: 26px; height: 26px; margin: -13px 0 0 -13px; } .udot.mun { width: 23px; height: 23px; margin: -11.5px 0 0 -11.5px; } }
+  .udot.lift { margin-top: -24px; }   /* an A.U. square sitting on its centre village: just above the village dot */
+  @media (pointer: coarse) { .udot { width: 20px; height: 20px; margin: -10px 0 0 -10px; } .udot.lift { margin-top: -32px; } .udot.reg { width: 26px; height: 26px; margin: -13px 0 0 -13px; } .udot.mun { width: 23px; height: 23px; margin: -11.5px 0 0 -11.5px; } }
   @media (pointer: coarse) { .dotpin { width: 24px; height: 24px; margin: -12px 0 0 -12px; } .dotpin.draft { width: 28px; height: 28px; margin: -14px 0 0 -14px; } }
 </style>
 </head>
@@ -114,7 +115,7 @@
         <label class="lyr"><input type="checkbox" id="lyr-dot" checked> <i style="background:#35f0a0;border-radius:50%"></i>Settlement dots</label>
         <label class="lyr"><input type="checkbox" id="lyr-nam"> <i style="background:transparent;border:1px solid #888"></i>Names</label>
         <label class="lyr"><input type="checkbox" id="lyr-udot" checked> <i style="background:#ff9f43;width:9px;height:9px"></i>Unit squares ■</label>
-        <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Colours by level: <b style="color:#ffd166">regions</b>, <b style="color:#fff">municipalities</b>, <b style="color:#7cc4ff">Tbilisi districts</b>, <b style="color:#ff9f43">administrative units (A.U.)</b>, <b style="color:#3de0c8">neighbourhoods</b>, <b style="color:#ff4fa3">settlements</b>. Each unit has a ■ square in its colour (regions from zoom 6, municipalities from 8, A.U.s from 10): tap it to select the unit and edit its line. A hollow ■ (from zoom 11) is an A.U. with no outline yet, placed among its villages — tap it, then Draw.</p>
+        <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Colours by level: <b style="color:#ffd166">regions</b>, <b style="color:#fff">municipalities</b>, <b style="color:#7cc4ff">Tbilisi districts</b>, <b style="color:#ff9f43">administrative units (A.U.)</b>, <b style="color:#3de0c8">neighbourhoods</b>, <b style="color:#ff4fa3">settlements</b>. Each unit has a ■ square in its colour (regions from zoom 6, municipalities from 8, A.U.s from 10): tap it to select the unit and edit its line. A hollow ■ (from zoom 11) is an A.U. with no outline yet. An A.U. square sits just above its centre village (the one with its name, else its first), in the middle of that village's outline, and moves with it — tap it, then Draw.</p>
       </div>
       <div class="row"><button id="places-btn" title="Add the GeoNames settlements of this country as amber points (code at L9, provisional until the outline is saved)">Load GeoNames places</button></div>
       <div class="list" id="list"></div>
@@ -287,6 +288,19 @@
     if (!p) { const hit = unitByCode(code); if (hit) p = bigRingPoint(hit.u.r.map(ringLL)); }
     if (p) UPT.set(code, p); return p;
   }
+  function villagePoint(code) {   // middle of the village's outline (saved, or kept on this device), else its dot
+    const pf = pendAll()[code], ft = saved.get(code) || (pf && (pf.features ? pf.features[0] : pf));
+    if (ft && ft.geometry) { const g = ft.geometry, polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+      const p = bigRingPoint(polys.map(q => q[0].map(c => [c[1], c[0]]))); if (p) return p; }
+    const d = pts.find(q => q.code === code && q.kind === 'row'); return d ? [d.lat, d.lon] : null;
+  }
+  function auCentre(c, name) {
+    const norm = s => (s || '').toLowerCase().replace(/[^a-z\u10d0-\u10ff]/g, '');
+    const kids = pts.filter(q => q.kind === 'row' && q.code.startsWith(c + '.') && q.code.split('.').length === 9 && !UNR.has(q.code));
+    if (!kids.length) return null;
+    const v = kids.find(q => norm(q.name) === norm(name)) || kids.slice().sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }))[0];
+    return villagePoint(v.code);
+  }
   function drawUnitDots() {
     udots.clearLayers(); if (!$('lyr-udot').checked) return;
     const z = map.getZoom(), b = map.getBounds().pad(0.3), done = new Set();
@@ -305,10 +319,14 @@
     UN.forEach((v, c) => {
       if (done.has(c)) return;
       if (v.k === 'administrative unit') {
-        let p = unitPoint(c), cls = 'au';
-        if (!p) { if (z < 11) return; const own = pts.filter(q => q.kind === 'row' && q.code.startsWith(c + '.')); if (!own.length) return; cls = 'au none';
+        const hasLine = !!unitPoint(c); if (!hasLine && z < 11) return;
+        // the square sits on the A.U.'s centre village (same name, else its first village): the middle of its outline, else its dot
+        const cv = auCentre(c, v.n); let p = cv, cls = hasLine ? 'au' : 'au none';
+        if (cv) cls += ' lift';
+        else if (hasLine) p = unitPoint(c);
+        else { const own = pts.filter(q => q.kind === 'row' && q.code.startsWith(c + '.')); if (!own.length) return;
           p = [own.reduce((a, q) => a + q.lat, 0) / own.length, own.reduce((a, q) => a + q.lon, 0) / own.length]; }
-        add(p, c, v.n, cls, cls === 'au' ? 'A.U.' : 'A.U., no outline yet');
+        add(p, c, v.n, cls, hasLine ? 'A.U.' : 'A.U., no outline yet');
       } else if (saved.has(c)) add(unitPoint(c), c, v.n, c.split('.').length === 8 ? 'nbh' : 'dis', v.k);
     });
   }
@@ -585,7 +603,7 @@
       catch (e) { if (e.name === 'AbortError') status('not shared — ' + fname + ' is kept on this device (lime green); Save again to share it'); else { downloadFC(fc); } }
     } else downloadFC(fc);
     if (work) map.removeLayer(work); work = null; editing = false; $('save').disabled = true; $('dl').disabled = true; $('note').value = '';
-    drawPending(); drawPoints();
+    drawPending(); drawPoints(); UPT.clear(); drawUnitDots();
   }
   function trySave() { const fc = feature(); if (!fc) return; guarded(fc, () => NOFS ? shareFC(fc) : writeFC(fc), trySave); }
   function tryDownload() { const fc = feature(); if (!fc) return; guarded(fc, () => downloadFC(fc), tryDownload); }
@@ -706,7 +724,7 @@
       drawPending();
     } else { pendDotPut(d); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fname; a.click(); status('downloaded ' + fname + ' — put it in geometry/own/, or choose the register folder first'); drawPending(); }
     if (draft.action === 'add') { $('admsel').value = ''; $('unitsel').value = ''; selectCode(code, name, draft.lat, draft.lon); }   // Draw next traces this place, not what was selected before
-    mergeDots(); closeForm(); renderList();
+    mergeDots(); closeForm(); renderList(); drawUnitDots();
   }
   $('dot-save').onclick = saveDot;
 
