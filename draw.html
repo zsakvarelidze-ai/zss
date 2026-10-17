@@ -115,6 +115,7 @@
         <label class="lyr"><input type="checkbox" id="lyr-dot" checked> <i style="background:#35f0a0;border-radius:50%"></i>Settlement dots</label>
         <label class="lyr"><input type="checkbox" id="lyr-nam"> <i style="background:transparent;border:1px solid #888"></i>Names</label>
         <label class="lyr"><input type="checkbox" id="lyr-udot" checked> <i style="background:#ff9f43;width:9px;height:9px"></i>Unit squares ■</label>
+        <label class="lyr"><input type="checkbox" id="lyr-mun-col"> <i style="background:linear-gradient(90deg,#ff4fa3,#4fd1ff,#34d399,#facc15);width:14px;height:9px"></i>Colour by municipality</label>
         <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Colours by level: <b style="color:#ffd166">regions</b>, <b style="color:#fff">municipalities</b>, <b style="color:#7cc4ff">Tbilisi districts</b>, <b style="color:#ff9f43">administrative units (A.U.)</b>, <b style="color:#3de0c8">neighbourhoods</b>, <b style="color:#ff4fa3">settlements</b>. Each unit has a ■ square in its colour (regions from zoom 6, municipalities from 8, A.U.s from 10): tap it to select the unit and edit its line. A hollow ■ (from zoom 11) is an A.U. with no outline yet. An A.U. square sits just above its centre village (the one with its name, else its first), in the middle of that village's outline, and moves with it — tap it, then Draw.</p>
       </div>
       <div class="row"><button id="places-btn" title="Add the GeoNames settlements of this country as amber points (code at L9, provisional until the outline is saved)">Load GeoNames places</button></div>
@@ -180,8 +181,17 @@
   // regions gold, municipalities white, Tbilisi districts blue, neighbourhoods teal (filled), settlements pink (filled)
   const LV = { reg: '#ffd166', mun: '#ffffff', dis: '#7cc4ff', nbh: '#3de0c8', au: '#ff9f43', set: '#ff4fa3', pend: '#c3f73a' };
   function isAU(code) { const u = UN.get(code); return u ? u.k === 'administrative unit' : !String(code).startsWith('3.6.5.1.6.1.'); }
+  // colour by municipality (ZSS 2026-10-17): every A.U., district, neighbourhood and settlement takes its municipality's colour;
+  // the kind still shows in the line: A.U./district dashed, neighbourhood dotted, settlement solid and filled
+  const MUNPAL = ['#ff4fa3', '#4fd1ff', '#34d399', '#facc15', '#a78bfa', '#ff9f43', '#f87171', '#2dd4bf', '#60a5fa', '#f472b6', '#a3e635', '#fb923c'];
+  let byMun = (() => { try { return localStorage.getItem('zss.trace.bymun') !== '0'; } catch (e) { return true; } })();
+  function munColor(code) { const s = String(code).split('.'); if (s.length < 7) return null; return MUNPAL[((+s[5] || 0) + 5 * (+s[4] || 0)) % MUNPAL.length]; }
   function ownStyle(code) {
     const n = String(code).split('.').length;
+    if (byMun && n >= 7) { const c = munColor(code);
+      if (n === 7) return { color: c, weight: 2, opacity: .95, fillColor: c, fillOpacity: .06, dashArray: '6 4' };
+      if (n === 8) return { color: c, weight: 2, opacity: 1, fillColor: c, fillOpacity: .1, dashArray: '2 4' };
+      return { color: c, weight: 1.6, opacity: .95, fillColor: c, fillOpacity: .22, dashArray: '' }; }
     if (n <= 5) return { color: LV.reg, weight: 3, opacity: .95, fillOpacity: 0, dashArray: '8 5' };
     if (n === 6) return { color: LV.mun, weight: 2.2, opacity: .95, fillOpacity: 0, dashArray: '6 4' };
     if (n === 7) { const c = isAU(code) ? LV.au : LV.dis; return { color: c, weight: 2, opacity: .95, fillColor: c, fillOpacity: .07, dashArray: '6 4' }; }   // Tbilisi districts blue, administrative units orange
@@ -482,6 +492,9 @@
   $('unitsel').onchange = e => { if (e.target.value) { $('admsel').value = ''; editUnit(e.target.value); } };
   ['lyr-reg', 'lyr-mun', 'lyr-dis', 'lyr-out', 'lyr-dot', 'lyr-nam'].forEach(id => $(id).onchange = syncLayers);
   $('lyr-udot').onchange = drawUnitDots;
+  $('lyr-mun-col').checked = byMun;
+  $('lyr-mun-col').onchange = e => { byMun = e.target.checked; try { localStorage.setItem('zss.trace.bymun', byMun ? '1' : '0'); } catch (er) {}
+    neighbours.eachLayer(l => { if (l._zcode && l.setStyle) l.setStyle(ownStyle(l._zcode)); }); };
   $('cc').onchange = e => { pts = []; points.clearLayers(); loadCountry(e.target.value.trim()); };
 
   // ---- selection and the working polygon
