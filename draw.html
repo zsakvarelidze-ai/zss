@@ -192,7 +192,7 @@
   const DFCOL = '#ff5a5f', HIDDEN = { opacity: 0, fillOpacity: 0 };
   function munColor(code) { const s = String(code).split('.'); if (s.length < 7) return null; return MUNPAL[((+s[5] || 0) + 5 * (+s[4] || 0)) % MUNPAL.length]; }
   function ownStyle(code) {
-    if (DF && dfOn && DFH.has(code)) return HIDDEN;
+    if (DF && dfOn && (DFH.has(code) || DF.swap[code])) return HIDDEN;   // its de facto shape comes from data/df
     if (DFC.has(code)) return dfOn ? { color: DFCOL, weight: 2.2, opacity: .95, fillOpacity: 0, dashArray: '' } : HIDDEN;
     const n = String(code).split('.').length;
     if (byMun && n >= 7) { const c = munColor(code);
@@ -226,7 +226,7 @@
     const dfv = !!(DF && dfOn);
     Object.values(BR).forEach(d => d.units.forEach(u => {
       if (dfv && DFH.has(u.c)) return;
-      if (dfv && DF.swap[u.c]) u = Object.assign({}, u, { r: DF.swap[u.c].r });
+      if (dfv && DF.swap[u.c]) u = Object.assign({}, u, { r: DF.swap[u.c].r, b: DF.swap[u.c].b || u.b });
       const L_ = d.level, grp = L_ <= 5 ? regGrp : L_ === 6 ? munGrp : disGrp;
       const st = L_ <= 4 ? { color: '#ffd166', weight: 3, opacity: .9 } : L_ === 5 ? { color: '#ffd166', weight: 2.2, opacity: .85 }
                : L_ === 6 ? { color: '#ffffff', weight: 1.3, opacity: .75 } : { color: '#7cc4ff', weight: 1, opacity: .8, dashArray: '3 3' };
