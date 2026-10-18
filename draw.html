@@ -116,6 +116,7 @@
         <label class="lyr"><input type="checkbox" id="lyr-nam"> <i style="background:transparent;border:1px solid #888"></i>Names</label>
         <label class="lyr"><input type="checkbox" id="lyr-udot" checked> <i style="background:#ff9f43;width:9px;height:9px"></i>Unit squares ■</label>
         <label class="lyr"><input type="checkbox" id="lyr-mun-col"> <i style="background:linear-gradient(90deg,#ff4fa3,#4fd1ff,#34d399,#facc15);width:14px;height:9px"></i>Colour by municipality</label>
+        <label class="lyr"><input type="checkbox" id="lyr-df"> <i style="background:#ff5a5f"></i><span title="Abkhazia and South Ossetia as they are run now">De facto</span></label>
         <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Colours by level: <b style="color:#ffd166">regions</b>, <b style="color:#fff">municipalities</b>, <b style="color:#7cc4ff">Tbilisi districts</b>, <b style="color:#ff9f43">administrative units (A.U.)</b>, <b style="color:#3de0c8">neighbourhoods</b>, <b style="color:#ff4fa3">settlements</b>. Each unit has a ■ square in its colour (regions from zoom 6, municipalities from 8, A.U.s from 10): tap it to select the unit and edit its line. A hollow ■ (from zoom 11) is an A.U. with no outline yet. An A.U. square sits just above its centre village (the one with its name, else its first), in the middle of that village's outline, and moves with it — tap it, then Draw.</p>
       </div>
       <div class="row"><button id="places-btn" title="Add the GeoNames settlements of this country as amber points (code at L9, provisional until the outline is saved)">Load GeoNames places</button></div>
@@ -185,8 +186,14 @@
   // the kind still shows in the line: A.U./district dashed, neighbourhood dotted, settlement solid and filled
   const MUNPAL = ['#ff4fa3', '#4fd1ff', '#34d399', '#facc15', '#a78bfa', '#ff9f43', '#f87171', '#2dd4bf', '#60a5fa', '#f472b6', '#a3e635', '#fb923c'];
   let byMun = (() => { try { return localStorage.getItem('zss.trace.bymun') !== '0'; } catch (e) { return true; } })();
+  // de facto view (ZSS 2026-10-18): Abkhazia and South Ossetia as they are run now (data/df/<cc>.js); off = the Georgian division
+  let dfOn = (() => { try { return localStorage.getItem('zss.trace.df') === '1'; } catch (e) { return false; } })();
+  let DF = null, DFH = new Set(), DFC = new Set();
+  const DFCOL = '#ff5a5f', HIDDEN = { opacity: 0, fillOpacity: 0 };
   function munColor(code) { const s = String(code).split('.'); if (s.length < 7) return null; return MUNPAL[((+s[5] || 0) + 5 * (+s[4] || 0)) % MUNPAL.length]; }
   function ownStyle(code) {
+    if (DF && dfOn && DFH.has(code)) return HIDDEN;
+    if (DFC.has(code)) return dfOn ? { color: DFCOL, weight: 2.2, opacity: .95, fillOpacity: 0, dashArray: '' } : HIDDEN;
     const n = String(code).split('.').length;
     if (byMun && n >= 7) { const c = munColor(code);
       if (n === 7) return { color: c, weight: 2, opacity: .95, fillColor: c, fillOpacity: .06, dashArray: '6 4' };
@@ -216,7 +223,10 @@
   const BR = {}, brWant = {}, UN = new Map(), UNR = new Set();   // UNR: codes of retired units, never offered again   // UN: administrative units and districts of the register (data/units/<cc>.js)
   function drawAdmin() {
     [munGrp, disGrp, regGrp, namGrp].forEach(g => g.clearLayers());
+    const dfv = !!(DF && dfOn);
     Object.values(BR).forEach(d => d.units.forEach(u => {
+      if (dfv && DFH.has(u.c)) return;
+      if (dfv && DF.swap[u.c]) u = Object.assign({}, u, { r: DF.swap[u.c].r });
       const L_ = d.level, grp = L_ <= 5 ? regGrp : L_ === 6 ? munGrp : disGrp;
       const st = L_ <= 4 ? { color: '#ffd166', weight: 3, opacity: .9 } : L_ === 5 ? { color: '#ffd166', weight: 2.2, opacity: .85 }
                : L_ === 6 ? { color: '#ffffff', weight: 1.3, opacity: .75 } : { color: '#7cc4ff', weight: 1, opacity: .8, dashArray: '3 3' };
@@ -224,6 +234,10 @@
       if (u.b && L_ >= 5) L.marker([(u.b[1] + u.b[3]) / 2, (u.b[0] + u.b[2]) / 2], { interactive: false, keyboard: false, pmIgnore: true,
         icon: L.divIcon({ className: 'nm' + (L_ === 5 ? ' r' : L_ >= 7 ? ' d' : ''), html: u.n, iconSize: null }) }).addTo(namGrp);
     }));
+    if (dfv) DF.units.forEach(u => { if (!u.r) return; const grp = u.l <= 5 ? regGrp : munGrp;
+      u.r.forEach(r => L.polygon(ringLL(r), { fill: false, interactive: false, color: DFCOL, weight: u.l <= 5 ? 3 : 2, opacity: .95, dashArray: u.ax ? '7 5' : '' }).addTo(grp));
+      if (u.b) L.marker([(u.b[1] + u.b[3]) / 2, (u.b[0] + u.b[2]) / 2], { interactive: false, keyboard: false, pmIgnore: true,
+        icon: L.divIcon({ className: 'nm' + (u.l === 5 ? ' r' : ''), html: esc(u.n) + (u.ax ? ' ~' : ''), iconSize: null }) }).addTo(namGrp); });
     syncLayers(); fillPicker(); fillUnits(); drawUnitDots();
   }
   function unitByCode(code) { for (const d of Object.values(BR)) for (const u of d.units) if (u.c === code) return { u, level: d.level }; return null; }
@@ -458,6 +472,7 @@
   window.ZSS = {
     branch: d => { BR[d.code] = d; d.units.forEach(u => { if (!u.leaf && d.level < 8) loadBranch(u.c); }); drawAdmin(); },
     own: d => siteOwn(d),
+    defacto: d => { DF = d; DFH = new Set(d.hide || []); DFC = new Set((d.units || []).map(u => u.c)); drawAdmin(); neighbours.eachLayer(l => { if (l._zcode && l.setStyle) l.setStyle(ownStyle(l._zcode)); }); },
     pts: d => { pts = pts.filter(p => p.kind === 'place').concat((d.pts || []).map(p => ({ code: p[0], name: p[1], lat: p[2], lon: p[3], kind: 'row' }))); mergeFolderPts(); after(d.code + ': ' + pts.length + ' points'); },
     units: d => { UN.clear(); UNR.clear(); (d.units || []).forEach(u => u[3] ? UNR.add(u[0]) : UN.set(u[0], { n: u[1], k: u[2] })); fillUnits(); neighbours.eachLayer(l => { if (l._zcode) l.setStyle(ownStyle(l._zcode)); }); drawUnitDots(); },
     places: d => { placesLoaded = true; pts = pts.concat((d.places || []).map(p => ({ code: p[0] + '.0'.repeat(Math.max(0, 8 - p[0].split('.').length)) + '.' + p[1], name: p[2], lat: p[3], lon: p[4], kind: 'place', fcode: p[5] }))); after(d.code + ': ' + pts.length + ' points incl. GeoNames places'); }
@@ -468,7 +483,7 @@
   function loadCountry(cc) {
     if (!/^\d+\.\d+\.\d+$/.test(cc)) return;
     $('back-country').href = 'country.html?code=' + cc; pts = []; placesLoaded = false; fitted = false; points.clearLayers();
-    Object.keys(BR).forEach(k => delete BR[k]); Object.keys(brWant).forEach(k => delete brWant[k]); [munGrp, disGrp, regGrp, namGrp].forEach(g => g.clearLayers()); loadBranch(cc); loadScript('data/own/' + cc + '.js' + VB, () => {});
+    Object.keys(BR).forEach(k => delete BR[k]); Object.keys(brWant).forEach(k => delete brWant[k]); [munGrp, disGrp, regGrp, namGrp].forEach(g => g.clearLayers()); DF = null; DFH = new Set(); DFC = new Set(); loadBranch(cc); loadScript('data/own/' + cc + '.js' + VB, () => {}); loadScript('data/df/' + cc + '.js' + VB, () => {});
     loadScript('data/units/' + cc + '.js' + VB, () => {});
     loadScript('data/pts/' + cc + '.js' + VB, () => status('no register points for ' + cc + ' — try GeoNames places, or type a code and draw'));
   }
@@ -493,6 +508,10 @@
   ['lyr-reg', 'lyr-mun', 'lyr-dis', 'lyr-out', 'lyr-dot', 'lyr-nam'].forEach(id => $(id).onchange = syncLayers);
   $('lyr-udot').onchange = drawUnitDots;
   $('lyr-mun-col').checked = byMun;
+  $('lyr-df').checked = dfOn;
+  $('lyr-df').onchange = e => { dfOn = e.target.checked; try { localStorage.setItem('zss.trace.df', dfOn ? '1' : '0'); } catch (er) {}
+    drawAdmin(); neighbours.eachLayer(l => { if (l._zcode && l.setStyle) l.setStyle(ownStyle(l._zcode)); });
+    status(dfOn ? 'de facto view: Abkhazia and South Ossetia as run now (red; dashed ~ = rough line). Villages stay under the Georgian municipalities.' : 'Georgian division'); };
   $('lyr-mun-col').onchange = e => { byMun = e.target.checked; try { localStorage.setItem('zss.trace.bymun', byMun ? '1' : '0'); } catch (er) {}
     neighbours.eachLayer(l => { if (l._zcode && l.setStyle) l.setStyle(ownStyle(l._zcode)); }); };
   $('cc').onchange = e => { pts = []; points.clearLayers(); loadCountry(e.target.value.trim()); };
