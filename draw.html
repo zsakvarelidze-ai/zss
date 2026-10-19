@@ -696,6 +696,7 @@
       catch (e) { if (e.name === 'AbortError') status('not shared — ' + fname + ' is kept on this device (lime green); Save again to share it'); else { downloadFC(fc); } }
     } else downloadFC(fc);
     if (work) map.removeLayer(work); work = null; editing = false; $('save').disabled = true; $('dl').disabled = true; $('note').value = '';
+    dropWork();   // the 3-second copy may have run while the share sheet was open
     drawPending(); drawPoints(); UPT.clear(); drawUnitDots();
   }
   function trySave() { const fc = feature(); if (!fc) return; guarded(fc, () => NOFS ? shareFC(fc) : writeFC(fc), trySave); }
