@@ -204,8 +204,8 @@
       if (n === 7) return { color: c, weight: 2, opacity: .95, fillColor: c, fillOpacity: .06, dashArray: '6 4' };
       if (n === 8) return { color: c, weight: 2, opacity: 1, fillColor: c, fillOpacity: .1, dashArray: '2 4' };
       return { color: c, weight: 1.6, opacity: .95, fillColor: c, fillOpacity: .22, dashArray: '' }; }
-    if (n <= 5) return { color: LV.reg, weight: 3, opacity: .95, fillOpacity: 0, dashArray: '8 5' };
-    if (n === 6) return { color: LV.mun, weight: 2.2, opacity: .95, fillOpacity: 0, dashArray: '6 4' };
+    if (n <= 5) return { color: LV.reg, weight: 3, opacity: .95, fill: false, fillOpacity: 0, dashArray: '8 5' };   // no fill: a tap inside a region or municipality reaches the dots and settlements
+    if (n === 6) return { color: LV.mun, weight: 2.2, opacity: .95, fill: false, fillOpacity: 0, dashArray: '6 4' };
     if (n === 7) { const c = isAU(code) ? LV.au : LV.dis; return { color: c, weight: 2, opacity: .95, fillColor: c, fillOpacity: .07, dashArray: '6 4' }; }   // Tbilisi districts blue, administrative units orange
     if (n === 8) return { color: LV.nbh, weight: 2.2, opacity: 1, fillColor: LV.nbh, fillOpacity: .14, dashArray: '' };   // neighbourhoods: teal, filled
     return { color: LV.set, weight: 1.6, opacity: .95, fillColor: LV.set, fillOpacity: .12, dashArray: '' };
@@ -223,7 +223,13 @@
   const points = L.layerGroup().addTo(map);            // settlement points of the country
   const selMark = L.layerGroup().addTo(map);
   const munGrp = L.layerGroup().addTo(map), disGrp = L.layerGroup().addTo(map), regGrp = L.layerGroup().addTo(map), namGrp = L.layerGroup();   // reference lines from data/b
-  const CV = L.canvas({ padding: 0.3, tolerance: 4 });   // dots and reference lines on one canvas: far faster than thousands of SVG shapes
+  // reference lines on one canvas in their own pane under everything clickable (ZSS 2026-10-20: a canvas on top swallowed taps on dots)
+  map.createPane('zlines'); map.getPane('zlines').style.zIndex = 350; map.getPane('zlines').style.pointerEvents = 'none';
+  const CV = L.canvas({ pane: 'zlines', padding: 0.3 });
+  // dots in their own pane above the outlines, so a tap on a dot picks the settlement, not the outline under it
+  map.createPane('zdots'); map.getPane('zdots').style.zIndex = 450;
+  const DOTR = L.svg({ pane: 'zdots' });
+  const DOTS_IN_VIEW = 1500;   // above this many dots only those near the view are drawn, and again after each move
   const VB = '?v=' + Date.now();   // always the latest lines: a cached region file next to a fresh municipality file drew them apart
   function ringLL(r) { const v = r.split(' '); let x = +v[0], y = +v[1]; const out = [[y / 1e4, x / 1e4]]; for (let i = 2; i + 1 < v.length; i += 2) { x += +v[i]; y += +v[i + 1]; out.push([y / 1e4, x / 1e4]); } return out; }
   const BR = {}, brWant = {}, UN = new Map(), UNR = new Set();   // UNR: codes of retired units, never offered again   // UN: administrative units and districts of the register (data/units/<cc>.js)
@@ -241,7 +247,7 @@
       const L_ = d.level, grp = L_ <= 5 ? regGrp : L_ === 6 ? munGrp : disGrp;
       const st = L_ <= 4 ? { color: '#ffd166', weight: 3, opacity: .9 } : L_ === 5 ? { color: '#ffd166', weight: 2.2, opacity: .85 }
                : L_ === 6 ? { color: '#ffffff', weight: 1.3, opacity: .75 } : { color: '#7cc4ff', weight: 1, opacity: .8, dashArray: '3 3' };
-      u.r.forEach(r => L.polygon(ringLL(r), Object.assign({ fill: false, interactive: false, renderer: CV }, st)).addTo(grp));
+      u.r.forEach(r => L.polygon(ringLL(r), Object.assign({ fill: false, interactive: false, renderer: CV, pane: 'zlines' }, st)).addTo(grp));
       if (u.b && L_ >= 5) L.marker(labelAt(u), { interactive: false, keyboard: false, pmIgnore: true,
         icon: L.divIcon({ className: 'nm' + (L_ === 5 ? ' r' : L_ >= 7 ? ' d' : ''), html: u.n, iconSize: null }) }).addTo(namGrp);
     }));
@@ -512,7 +518,7 @@
     if (moveOn && map.getZoom() >= 13) { drawPins(); return; }
     if (pts.length > 6000 && map.getZoom() < 11) { status(pts.length + ' points — zoom in to see them'); return; }
     const b = map.getBounds().pad(0.3);
-    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { renderer: CV, radius: p.fresh ? 5 : saved.has(p.code) ? 2 : p.kind === 'place' ? 3 : 4, color: p.fresh ? '#c3f73a' : saved.has(p.code) ? '#ff4fa3' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: p.fresh ? 2.5 : saved.has(p.code) ? 1 : 1.5, fillOpacity: p.fresh ? .9 : saved.has(p.code) ? .8 : .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code + (p.fresh ? ' · new, not yet in the register' : ''), { className: 'lbl', direction: 'top' }); m.on('click', () => { if (dotMode || drawingNow()) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
+    for (const p of pts) { if (pts.length > DOTS_IN_VIEW && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { renderer: DOTR, pane: 'zdots', radius: p.fresh ? 5 : saved.has(p.code) ? 2 : p.kind === 'place' ? 3 : 4, color: p.fresh ? '#c3f73a' : saved.has(p.code) ? '#ff4fa3' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: p.fresh ? 2.5 : saved.has(p.code) ? 1 : 1.5, fillOpacity: p.fresh ? .9 : saved.has(p.code) ? .8 : .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code + (p.fresh ? ' · new, not yet in the register' : ''), { className: 'lbl', direction: 'top' }); m.on('click', () => { if (dotMode || drawingNow()) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
   }
   function renderList() {
     const q = $('q').value.trim().toLowerCase(); const box = $('list'); box.innerHTML = '';
@@ -521,7 +527,7 @@
     if (!hits.length) box.innerHTML = '<div style="cursor:default;color:var(--dim)">' + (pts.length ? 'no match' : 'enter a country code above, or a code and a point by hand') + '</div>';
   }
   $('q').oninput = renderList;
-  map.on('moveend', () => { if (pts.length > 6000 || moveOn) drawPoints(); drawUnitDots(); });
+  map.on('moveend', () => { if (pts.length > DOTS_IN_VIEW || moveOn) drawPoints(); drawUnitDots(); });
   $('admsel').onchange = e => { if (e.target.value) { $('unitsel').value = ''; editUnit(e.target.value); } };
   $('unitsel').onchange = e => { if (e.target.value) { $('admsel').value = ''; editUnit(e.target.value); } };
   ['lyr-reg', 'lyr-mun', 'lyr-dis', 'lyr-out', 'lyr-dot', 'lyr-nam'].forEach(id => $(id).onchange = syncLayers);
