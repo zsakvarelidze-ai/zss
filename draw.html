@@ -677,7 +677,7 @@
   }
   const sameName = (a, b) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
   async function guarded(fc, go, retry) { const r = checkSave(fc);
-    const held = await folderName(r.code); if (held && !sameName(held, r.name)) r.probs.unshift('Your folder already has <b>' + esc(held) + '</b> under ' + esc(r.code) + '. Saving puts this shape in its place. Reload the page (it may be out of date) and give this place its own dot first.');
+    const sv = saved.get(r.code), held = (await folderName(r.code)) || (sv && sv.properties && sv.properties.name) || null;   // iPad: what the site or this device already has under the code if (held && !sameName(held, r.name)) r.probs.unshift('Your folder already has <b>' + esc(held) + '</b> under ' + esc(r.code) + '. Saving puts this shape in its place. Reload the page (it may be out of date) and give this place its own dot first.');
     if (!r.probs.length) return go(); status('check before saving: ' + r.probs.length + ' thing' + (r.probs.length > 1 ? 's' : '') + ' to look at'); openGuard(r, go, retry); }
   async function writeFC(fc) {
     try { const own = await ownDir(true); const code = fc.features[0].properties.code; const fh = await own.getFileHandle(code + '.geojson', { create: true }); const w = await fh.createWritable(); await w.write(JSON.stringify(fc, null, 1)); await w.close();
