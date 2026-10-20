@@ -227,6 +227,11 @@
   const VB = '?v=' + Date.now();   // always the latest lines: a cached region file next to a fresh municipality file drew them apart
   function ringLL(r) { const v = r.split(' '); let x = +v[0], y = +v[1]; const out = [[y / 1e4, x / 1e4]]; for (let i = 2; i + 1 < v.length; i += 2) { x += +v[i]; y += +v[i + 1]; out.push([y / 1e4, x / 1e4]); } return out; }
   const BR = {}, brWant = {}, UN = new Map(), UNR = new Set();   // UNR: codes of retired units, never offered again   // UN: administrative units and districts of the register (data/units/<cc>.js)
+  // a unit's name sits inside its biggest part, not at the middle of its bounding box (ZSS 2026-10-20:
+  // Sighnaghi's name was landing in Dedoplistskaro); worked out once per line
+  const LPT = new Map();
+  function labelAt(u) { const k = u.c + ':' + u.r.length + ':' + (u.r[0] || '').length; if (LPT.has(k)) return LPT.get(k);
+    let p = null; try { p = bigRingPoint(u.r.map(ringLL)); } catch (e) {} if (!p) p = [(u.b[1] + u.b[3]) / 2, (u.b[0] + u.b[2]) / 2]; LPT.set(k, p); return p; }
   function drawAdmin() {
     [munGrp, disGrp, regGrp, namGrp].forEach(g => g.clearLayers());
     const dfv = !!(DF && dfOn);
@@ -237,12 +242,12 @@
       const st = L_ <= 4 ? { color: '#ffd166', weight: 3, opacity: .9 } : L_ === 5 ? { color: '#ffd166', weight: 2.2, opacity: .85 }
                : L_ === 6 ? { color: '#ffffff', weight: 1.3, opacity: .75 } : { color: '#7cc4ff', weight: 1, opacity: .8, dashArray: '3 3' };
       u.r.forEach(r => L.polygon(ringLL(r), Object.assign({ fill: false, interactive: false, renderer: CV }, st)).addTo(grp));
-      if (u.b && L_ >= 5) L.marker([(u.b[1] + u.b[3]) / 2, (u.b[0] + u.b[2]) / 2], { interactive: false, keyboard: false, pmIgnore: true,
+      if (u.b && L_ >= 5) L.marker(labelAt(u), { interactive: false, keyboard: false, pmIgnore: true,
         icon: L.divIcon({ className: 'nm' + (L_ === 5 ? ' r' : L_ >= 7 ? ' d' : ''), html: u.n, iconSize: null }) }).addTo(namGrp);
     }));
     if (dfv) DF.units.forEach(u => { if (!u.r) return; const grp = u.l <= 5 ? regGrp : munGrp;
       u.r.forEach(r => L.polygon(ringLL(r), { fill: false, interactive: false, color: DFCOL, weight: u.l <= 5 ? 3 : 2, opacity: .95, dashArray: u.ax ? '7 5' : '' }).addTo(grp));
-      if (u.b) L.marker([(u.b[1] + u.b[3]) / 2, (u.b[0] + u.b[2]) / 2], { interactive: false, keyboard: false, pmIgnore: true,
+      if (u.b) L.marker(labelAt(u), { interactive: false, keyboard: false, pmIgnore: true,
         icon: L.divIcon({ className: 'nm' + (u.l === 5 ? ' r' : ''), html: esc(u.n) + (u.ax ? ' ~' : ''), iconSize: null }) }).addTo(namGrp); });
     syncLayers(); fillPicker(); fillUnits(); drawUnitDots();
   }
