@@ -223,6 +223,7 @@
   const points = L.layerGroup().addTo(map);            // settlement points of the country
   const selMark = L.layerGroup().addTo(map);
   const munGrp = L.layerGroup().addTo(map), disGrp = L.layerGroup().addTo(map), regGrp = L.layerGroup().addTo(map), namGrp = L.layerGroup();   // reference lines from data/b
+  const CV = L.canvas({ padding: 0.3, tolerance: 4 });   // dots and reference lines on one canvas: far faster than thousands of SVG shapes
   const VB = '?v=' + Date.now();   // always the latest lines: a cached region file next to a fresh municipality file drew them apart
   function ringLL(r) { const v = r.split(' '); let x = +v[0], y = +v[1]; const out = [[y / 1e4, x / 1e4]]; for (let i = 2; i + 1 < v.length; i += 2) { x += +v[i]; y += +v[i + 1]; out.push([y / 1e4, x / 1e4]); } return out; }
   const BR = {}, brWant = {}, UN = new Map(), UNR = new Set();   // UNR: codes of retired units, never offered again   // UN: administrative units and districts of the register (data/units/<cc>.js)
@@ -235,7 +236,7 @@
       const L_ = d.level, grp = L_ <= 5 ? regGrp : L_ === 6 ? munGrp : disGrp;
       const st = L_ <= 4 ? { color: '#ffd166', weight: 3, opacity: .9 } : L_ === 5 ? { color: '#ffd166', weight: 2.2, opacity: .85 }
                : L_ === 6 ? { color: '#ffffff', weight: 1.3, opacity: .75 } : { color: '#7cc4ff', weight: 1, opacity: .8, dashArray: '3 3' };
-      u.r.forEach(r => L.polygon(ringLL(r), Object.assign({ fill: false, interactive: false }, st)).addTo(grp));
+      u.r.forEach(r => L.polygon(ringLL(r), Object.assign({ fill: false, interactive: false, renderer: CV }, st)).addTo(grp));
       if (u.b && L_ >= 5) L.marker([(u.b[1] + u.b[3]) / 2, (u.b[0] + u.b[2]) / 2], { interactive: false, keyboard: false, pmIgnore: true,
         icon: L.divIcon({ className: 'nm' + (L_ === 5 ? ' r' : L_ >= 7 ? ' d' : ''), html: u.n, iconSize: null }) }).addTo(namGrp);
     }));
@@ -323,7 +324,9 @@
       const p = bigRingPoint(polys.map(q => q[0].map(c => [c[1], c[0]]))); if (p) return p; }
     const d = pts.find(q => q.code === code && q.kind === 'row'); return d ? [d.lat, d.lon] : null;
   }
-  function auCentre(c, name) {
+  const ACC = new Map();   // A.U. square positions, worked out once until the dots or outlines change
+  function auCentre(c, name) { if (ACC.has(c)) return ACC.get(c); const r = auCentre0(c, name); ACC.set(c, r); return r; }
+  function auCentre0(c, name) {
     const norm = s => (s || '').toLowerCase().replace(/[^a-z\u10d0-\u10ff]/g, '');
     const kids = pts.filter(q => q.kind === 'row' && q.code.startsWith(c + '.') && q.code.split('.').length === 9 && !UNR.has(q.code));
     if (!kids.length) return null;
@@ -380,7 +383,7 @@
       lyr.bindTooltip(u.n || u.c, { className: 'lbl', sticky: true });
       lyr.on('click', () => { if (!work && !dotMode && !moveOn && !drawingNow()) { selectCode(u.c, u.n || ''); status('existing outline ' + u.c + ' — Edit to change it, Draw to replace'); } });
     });
-    const nb = $('nb'); if (nb) nb.textContent = d.units.length + ' outlines from the published site, drawn in orange.'; renderList(); fillUnits(); UPT.clear(); drawUnitDots(); restyleOwn();
+    const nb = $('nb'); if (nb) nb.textContent = d.units.length + ' outlines from the published site, drawn in orange.'; renderList(); fillUnits(); UPT.clear(); ACC.clear(); drawUnitDots(); restyleOwn();
   }
   function loadBranch(code) {
     if (brWant[code]) return; brWant[code] = true;
@@ -417,8 +420,10 @@
   (async () => { const h = await idb.get(); if (!h) return; try { const p = await h.queryPermission({ mode: 'readwrite' }); if (p === 'granted') await useFolder(h); else { $('folder-hint').innerHTML = 'Folder <b>' + esc(h.name) + '</b> remembered — click <i>Choose the register folder</i> to reconnect it (the browser asks once per visit).'; $('pick').onclick = async () => { try { if (await h.requestPermission({ mode: 'readwrite' }) === 'granted') await useFolder(h); } catch (e) { status('folder: ' + e.message); } }; } } catch (e) {} })();
 
   const saved = new Map();   // code -> feature (from folder)
-  function pendAll() { try { return JSON.parse(localStorage.getItem(PKEY) || '{}'); } catch (e) { return {}; } }
-  function pendPut(code, fc) { const p = pendAll(); p[code] = Object.assign({ kept_at: new Date().toISOString() }, fc); try { localStorage.setItem(PKEY, JSON.stringify(p)); } catch (e) { status('could not keep a copy on this device: ' + e.message); } }
+  // the copies kept on this device are read once and remembered (ZSS 2026-10-20: re-reading them for every square made panning slow)
+  let PENDC = null;
+  function pendAll() { if (PENDC) return PENDC; try { PENDC = JSON.parse(localStorage.getItem(PKEY) || '{}'); } catch (e) { PENDC = {}; } return PENDC; }
+  function pendPut(code, fc) { const p = Object.assign({}, pendAll()); PENDC = null; p[code] = Object.assign({ kept_at: new Date().toISOString() }, fc); try { localStorage.setItem(PKEY, JSON.stringify(p)); } catch (e) { status('could not keep a copy on this device: ' + e.message); } }
   const pendGrp = L.layerGroup();
   function drawPending() {
     if (!map.hasLayer(pendGrp)) pendGrp.addTo(map);
@@ -431,7 +436,7 @@
     const kept = [codes.length ? codes.length + ' outline' + (codes.length > 1 ? 's' : '') + ': ' + codes.map(esc).join(', ') : '', dcodes.length ? dcodes.length + ' dot' + (dcodes.length > 1 ? 's' : '') + ': ' + dcodes.map(esc).join(', ') : ''].filter(Boolean).join('; ');
     el.innerHTML = kept ? 'Kept on this device (lime green) — ' + kept + '. Once they are in the folder, <a href="#" id="pend-clear">forget them here</a>.' : '';
     const c = $('pend-clear'); if (c) c.onclick = e => { e.preventDefault();
-      if (c.dataset.sure) { try { localStorage.removeItem(PKEY); localStorage.removeItem(DKEY); } catch (er) {} for (const k of codes) saved.delete(k); drawPending(); mergeDots(); drawPoints(); renderList(); status('copies on this device forgotten'); }
+      if (c.dataset.sure) { try { localStorage.removeItem(PKEY); localStorage.removeItem(DKEY); } catch (er) {} PENDC = null; for (const k of codes) saved.delete(k); drawPending(); mergeDots(); drawPoints(); renderList(); status('copies on this device forgotten'); }
       else { c.dataset.sure = '1'; c.textContent = 'tap again to forget them — only if the folder has them'; } };
   }
   async function loadNeighbours() {
@@ -450,7 +455,7 @@
           n++; }
       } catch (e) {}
     }
-    $('nb').textContent = n + ' outline' + (n === 1 ? '' : 's') + ' already in the folder, drawn in orange.'; renderList(); fillUnits(); UPT.clear(); drawUnitDots(); restyleOwn();
+    $('nb').textContent = n + ' outline' + (n === 1 ? '' : 's') + ' already in the folder, drawn in orange.'; renderList(); fillUnits(); UPT.clear(); ACC.clear(); drawUnitDots(); restyleOwn();
     await folderPoints();
   }
   // dots straight from the register folder (points/<cc>.csv, names from countries/<cc>.csv), so a new
@@ -486,7 +491,7 @@
     units: d => { UN.clear(); UNR.clear(); (d.units || []).forEach(u => u[3] ? UNR.add(u[0]) : UN.set(u[0], { n: u[1], k: u[2] })); fillUnits(); restyleOwn(); drawUnitDots(); },
     places: d => { placesLoaded = true; pts = pts.concat((d.places || []).map(p => ({ code: p[0] + '.0'.repeat(Math.max(0, 8 - p[0].split('.').length)) + '.' + p[1], name: p[2], lat: p[3], lon: p[4], kind: 'place', fcode: p[5] }))); after(d.code + ': ' + pts.length + ' points incl. GeoNames places'); }
   };
-  function after(msg) { drawPoints(); setTimeout(() => { map.invalidateSize(); drawPoints(); }, 50); renderList(); status(msg); if (!qs.get('lat') && pts.length && !fitted) { fitted = true; map.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lon])).pad(0.05)); } }
+  function after(msg) { ACC.clear(); drawPoints(); setTimeout(() => { map.invalidateSize(); drawPoints(); }, 50); renderList(); status(msg); if (!qs.get('lat') && pts.length && !fitted) { fitted = true; map.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lon])).pad(0.05)); } }
   let fitted = false;
   function loadScript(src, onerr) { const s = document.createElement('script'); s.src = src; s.onerror = onerr; document.head.appendChild(s); }
   function loadCountry(cc) {
@@ -502,7 +507,7 @@
     if (moveOn && map.getZoom() >= 13) { drawPins(); return; }
     if (pts.length > 6000 && map.getZoom() < 11) { status(pts.length + ' points — zoom in to see them'); return; }
     const b = map.getBounds().pad(0.3);
-    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { radius: p.fresh ? 5 : saved.has(p.code) ? 2 : p.kind === 'place' ? 3 : 4, color: p.fresh ? '#c3f73a' : saved.has(p.code) ? '#ff4fa3' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: p.fresh ? 2.5 : saved.has(p.code) ? 1 : 1.5, fillOpacity: p.fresh ? .9 : saved.has(p.code) ? .8 : .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code + (p.fresh ? ' · new, not yet in the register' : ''), { className: 'lbl', direction: 'top' }); m.on('click', () => { if (dotMode || drawingNow()) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
+    for (const p of pts) { if (pts.length > 6000 && !b.contains([p.lat, p.lon])) continue; const m = L.circleMarker([p.lat, p.lon], { renderer: CV, radius: p.fresh ? 5 : saved.has(p.code) ? 2 : p.kind === 'place' ? 3 : 4, color: p.fresh ? '#c3f73a' : saved.has(p.code) ? '#ff4fa3' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: p.fresh ? 2.5 : saved.has(p.code) ? 1 : 1.5, fillOpacity: p.fresh ? .9 : saved.has(p.code) ? .8 : .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code + (p.fresh ? ' · new, not yet in the register' : ''), { className: 'lbl', direction: 'top' }); m.on('click', () => { if (dotMode || drawingNow()) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
   }
   function renderList() {
     const q = $('q').value.trim().toLowerCase(); const box = $('list'); box.innerHTML = '';
@@ -697,7 +702,7 @@
     } else downloadFC(fc);
     if (work) map.removeLayer(work); work = null; editing = false; $('save').disabled = true; $('dl').disabled = true; $('note').value = '';
     dropWork();   // the 3-second copy may have run while the share sheet was open
-    drawPending(); drawPoints(); UPT.clear(); drawUnitDots();
+    drawPending(); drawPoints(); UPT.clear(); ACC.clear(); drawUnitDots();
   }
   function trySave() { const fc = feature(); if (!fc) return; guarded(fc, () => NOFS ? shareFC(fc) : writeFC(fc), trySave); }
   function tryDownload() { const fc = feature(); if (!fc) return; guarded(fc, () => downloadFC(fc), tryDownload); }
@@ -712,6 +717,7 @@
   function pendDots() { try { return JSON.parse(localStorage.getItem(DKEY) || '{}'); } catch (e) { return {}; } }
   function pendDotPut(d) { const p = pendDots(); p[d.code] = d; try { localStorage.setItem(DKEY, JSON.stringify(p)); } catch (e) { status('could not keep a copy on this device: ' + e.message); } }
   function mergeDots() {
+    ACC.clear();
     const all = new Map(Object.entries(pendDots())); dotFiles.forEach((d, c) => all.set(c, d));
     if (!all.size) return;
     pts = pts.filter(p => p.kind === 'place' || !all.has(p.code)).concat([...all.values()].map(d => ({ code: d.code, name: d.name, lat: +d.lat, lon: +d.lon, kind: 'row', fresh: true, dot: d })));
