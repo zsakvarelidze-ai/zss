@@ -382,7 +382,10 @@
       const on = $(id).checked; if (on && !map.hasLayer(g)) g.addTo(map); if (!on && map.hasLayer(g)) map.removeLayer(g); });
   }
   // traced outlines without a chosen folder: the copy published with the site (data/own/<cc>.js)
+  // codes the published site already has an outline for (ZSS 2026-10-21: 'forget them here' only drops copies the site has)
+  const SITEC = new Map(); let SITE_LOADED = false;
   function siteOwn(d) {
+    SITE_LOADED = true; d.units.forEach(u => SITEC.set(u.c, ((u.r || [])[0] || '').length));
     if (dirHandle || neighbours.getLayers().length) return;
     const pend = pendAll();
     d.units.forEach(u => { if (pend[u.c]) return;
@@ -447,8 +450,15 @@
     const kept = [codes.length ? codes.length + ' outline' + (codes.length > 1 ? 's' : '') + ': ' + codes.map(esc).join(', ') : '', dcodes.length ? dcodes.length + ' dot' + (dcodes.length > 1 ? 's' : '') + ': ' + dcodes.map(esc).join(', ') : ''].filter(Boolean).join('; ');
     el.innerHTML = kept ? 'Kept on this device (lime green) — ' + kept + '. Once they are in the folder, <a href="#" id="pend-clear">forget them here</a>.' : '';
     const c = $('pend-clear'); if (c) c.onclick = e => { e.preventDefault();
-      if (c.dataset.sure) { try { localStorage.removeItem(PKEY); localStorage.removeItem(DKEY); } catch (er) {} PENDC = null; for (const k of codes) saved.delete(k); drawPending(); mergeDots(); drawPoints(); renderList(); status('copies on this device forgotten'); }
-      else { c.dataset.sure = '1'; c.textContent = 'tap again to forget them — only if the folder has them'; } };
+      if (!SITE_LOADED) { status('the published outlines have not loaded yet — try again in a moment'); return; }
+      const P = Object.assign({}, pendAll()), Dd = pendDots(), safe = codes.filter(k => SITEC.has(k)), keep = codes.filter(k => !SITEC.has(k));
+      if (c.dataset.sure) { safe.forEach(k => { delete P[k]; saved.delete(k); });
+        try { if (Object.keys(P).length) localStorage.setItem(PKEY, JSON.stringify(P)); else localStorage.removeItem(PKEY);
+          const onSite = new Set(pts.filter(q => q.kind === 'row' && !q.fresh).map(q => q.code)), D2 = {}; Object.keys(Dd).forEach(k => { const d = Dd[k]; const q = pts.find(x => x.code === k && x.kind === 'row' && !x.fresh); if (!(q && Math.abs(q.lat - d.lat) < 1e-5 && Math.abs(q.lon - d.lon) < 1e-5)) D2[k] = d; });
+          if (Object.keys(D2).length) localStorage.setItem(DKEY, JSON.stringify(D2)); else localStorage.removeItem(DKEY); } catch (er) {} PENDC = null;
+        drawPending(); mergeDots(); drawPoints(); renderList();
+        status(safe.length + ' copies forgotten (the site has them)' + (keep.length ? '; ' + keep.length + ' kept because the site does not have them yet: ' + keep.join(', ') + ' — Save them to the folder' : '')); }
+      else { c.dataset.sure = '1'; c.textContent = 'tap again to forget the ' + safe.length + ' the site already has' + (keep.length ? ' (' + keep.length + ' not on the site yet stay here)' : ''); } };
   }
   async function loadNeighbours() {
     neighbours.clearLayers(); saved.clear(); dotFiles.clear();
