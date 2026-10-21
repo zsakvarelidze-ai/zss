@@ -83,6 +83,7 @@
   .udot.dis { background: #7cc4ff; } .udot.au { background: #ff9f43; } .udot.nbh { background: #3de0c8; width: 10px; height: 10px; margin: -5px 0 0 -5px; }
   .udot.none { background: transparent; border-color: #ff9f43; box-shadow: none; }
   .udot.lift { margin-top: -24px; }
+  .udot.drag { cursor: move; } .udot.hand { outline: 2px solid #c3f73a; outline-offset: 1px; }   /* hand-placed square not on the site yet */
   .udot.au.small { width: 8px; height: 8px; margin: -4px 0 0 -4px; border-width: 1.5px; } .udot.au.small.lift { margin-top: -18px; }   /* A.U. already outlined: smaller */   /* an A.U. square sitting on its centre village: just above the village dot */
   @media (pointer: coarse) { .udot { width: 20px; height: 20px; margin: -10px 0 0 -10px; } .udot.lift { margin-top: -32px; } .udot.reg { width: 26px; height: 26px; margin: -13px 0 0 -13px; } .udot.mun { width: 23px; height: 23px; margin: -11.5px 0 0 -11.5px; } }
   @media (pointer: coarse) { .udot.au.small { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; } .udot.au.small.lift { margin-top: -27px; } }
@@ -128,7 +129,9 @@
     </div>
     <div class="card" id="dots">
       <h2>Dots</h2>
-      <div class="row"><button id="dot-add">Add a dot</button><button id="dot-move" aria-pressed="false">Move dots</button></div>
+      <div class="row"><button id="dot-add">Add a dot</button><button id="dot-move" aria-pressed="false">Move dots</button><button id="sq-move" aria-pressed="false">Move squares</button></div>
+      <div class="row" id="sq-row" hidden><button id="sq-save" class="primary">Save squares</button><button id="sq-back" title="return the squares you moved but did not save">Put back</button></div>
+      <div id="sq-n" class="hint" hidden></div>
       <div id="dot-form" hidden>
         <div id="dot-in" class="hint"></div>
         <label>Name <input id="dot-name" placeholder="the place's name, in Latin letters"></label>
@@ -149,7 +152,7 @@
       <label>Your initials <input id="who" class="mono" maxlength="6" placeholder="ZS"></label>
       <label>Traced from <select id="basis"><option value="imagery">the imagery (built-up edge)</option><option value="napr">NAPR's settlement-boundary layer (maps.gov.ge, working version), followed on the imagery</option><option value="other">another map (say which in the note)</option></select></label>
       <label>Note <textarea id="note" placeholder="what the edge follows — built-up limit, fence line, river…"></textarea></label>
-      <div class="row"><button id="draw" class="primary">Draw</button><button id="edit">Edit</button><button id="clear">Discard</button></div>
+      <div class="row"><button id="draw" class="primary">Draw</button><button id="edit">Edit</button><button id="clear">Discard</button><button id="undisc" hidden title="bring back the outline you last discarded">Undo discard</button></div>
       <div class="row"><button id="save" class="primary" disabled>Save to folder</button><button id="dl" disabled>Download .geojson</button></div>
       <p class="hint">Click to add vertices, click the first vertex to close. Vertices snap to a neighbour's edge so two outlines never overlap or leave a sliver. Saved with the imagery name, zoom, date and initials; licence <span class="mono">own</span>, status asserted.</p>
     </div>
@@ -308,6 +311,11 @@
   }
   // ---- unit squares: one ■ per region, municipality, Tbilisi district, A.U. and neighbourhood, in its colour; tap to edit
   const udots = L.layerGroup().addTo(map), UPT = new Map();
+  // squares placed by hand (ZSS 2026-10-21): the site's data/sq/<cc>.js, the folder's *.sq.json, and moves kept on this device (lime ring)
+  const SQKEY = 'zss.trace.pensq'; let SQS = new Map(), sqFiles = new Map(), sqOn = false;
+  let PSQ = (() => { try { return JSON.parse(localStorage.getItem(SQKEY) || '{}'); } catch (e) { return {}; } })();
+  function putSq() { try { if (Object.keys(PSQ).length) localStorage.setItem(SQKEY, JSON.stringify(PSQ)); else localStorage.removeItem(SQKEY); } catch (e) { status('could not keep the squares on this device: ' + e.message); } }
+  function sqAt(code) { const l = PSQ[code]; if (l) return { p: [l.lat, l.lon], local: true }; const f = sqFiles.get(code) || SQS.get(code); return f ? { p: f, local: false } : null; }
   // the middle of an outline: inside it, away from its edges and close to its centre of area —
   // the point with the most (distance to the edge − half the distance to the centre), in km (ZSS 2026-10-21: centre the squares and dots).
   // The Sighnaghi village dots were centred in the register with this same rule (POINT-CHANGES 2026-10-21).
@@ -372,10 +380,12 @@
     udots.clearLayers(); if (!$('lyr-udot').checked) return;
     const z = map.getZoom(), b = map.getBounds().pad(0.3), done = new Set();
     const add = (p, code, name, cls, label) => {
+      const hp = sqAt(code); if (hp) { p = hp.p; cls = cls.replace(' lift', '') + (hp.local ? ' hand' : ''); }
       if (!p || done.has(code) || !b.contains(p)) return; done.add(code);
-      const m = L.marker(p, { pmIgnore: true, keyboard: false, zIndexOffset: 500, icon: L.divIcon({ className: 'udot ' + cls, iconSize: null }) }).addTo(udots);
+      const m = L.marker(p, { draggable: sqOn, pmIgnore: true, keyboard: false, zIndexOffset: 500, icon: L.divIcon({ className: 'udot ' + cls + (sqOn ? ' drag' : ''), iconSize: null }) }).addTo(udots);
       m.bindTooltip(name + ' · ' + label + ' · ' + code, { className: 'lbl', direction: 'top' });
-      m.on('click', () => { if (dotMode || moveOn || drawingNow()) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } 
+      if (sqOn) m.on('dragend', () => moveSquare(code, name, p, m.getLatLng()));
+      m.on('click', () => { if (sqOn || dotMode || moveOn || drawingNow()) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } 
         if (UN.has(code) && !unitByCode(code)) { $('unitsel').value = code; $('admsel').value = ''; } else { $('admsel').value = code; $('unitsel').value = ''; }
         editUnit(code); });
     };
@@ -486,10 +496,11 @@
       else { c.dataset.sure = '1'; c.textContent = 'tap again to forget the ' + safe.length + ' the site already has' + (keep.length ? ' (' + keep.length + ' not on the site yet stay here)' : ''); } };
   }
   async function loadNeighbours() {
-    neighbours.clearLayers(); saved.clear(); dotFiles.clear();
+    neighbours.clearLayers(); saved.clear(); dotFiles.clear(); sqFiles.clear();
     let own; try { own = await ownDir(false); } catch (e) { $('nb').textContent = 'no geometry/own yet — created on first save.'; return; }
     let n = 0;
     for await (const [name, h] of own.entries()) {
+      if (name.endsWith('.sq.json')) { try { const d = JSON.parse(await (await h.getFile()).text()); (d.squares || []).forEach(q => { if (q && q.code && isFinite(q.lat) && isFinite(q.lon)) sqFiles.set(q.code, [+q.lat, +q.lon]); }); } catch (e) {} continue; }
       if (name.endsWith('.dot.json')) { try { const d = JSON.parse(await (await h.getFile()).text()); if (d && d.code && isFinite(d.lat) && isFinite(d.lon)) dotFiles.set(d.code, d); } catch (e) {} continue; }
       if (!name.endsWith('.geojson')) continue;
       try { const f = await h.getFile(); const gj = JSON.parse(await f.text()); const feats = gj.type === 'FeatureCollection' ? gj.features : [gj];
@@ -533,6 +544,8 @@
     branch: d => { BR[d.code] = d; d.units.forEach(u => { if (!u.leaf && d.level < 8) loadBranch(u.c); }); drawAdmin(); },
     own: d => siteOwn(d),
     defacto: d => { DF = d; DFH = new Set(d.hide || []); DFC = new Set((d.units || []).map(u => u.c)); drawAdmin(); restyleOwn(); },
+    squares: d => { SQS = new Map((d.sq || []).map(x => [x[0], [x[1], x[2]]]));
+      Object.keys(PSQ).forEach(c => { const q = PSQ[c], s2 = SQS.get(c); if (q.saved && s2 && Math.abs(s2[0] - q.lat) < 1e-5 && Math.abs(s2[1] - q.lon) < 1e-5) delete PSQ[c]; }); putSq(); sqUI(); drawUnitDots(); },
     pts: d => { pts = pts.filter(p => p.kind === 'place').concat((d.pts || []).map(p => ({ code: p[0], name: p[1], lat: p[2], lon: p[3], kind: 'row' }))); mergeFolderPts(); after(d.code + ': ' + pts.length + ' points'); },
     units: d => { UN.clear(); UNR.clear(); (d.units || []).forEach(u => u[3] ? UNR.add(u[0]) : UN.set(u[0], { n: u[1], k: u[2] })); fillUnits(); restyleOwn(); drawUnitDots(); },
     places: d => { placesLoaded = true; pts = pts.concat((d.places || []).map(p => ({ code: p[0] + '.0'.repeat(Math.max(0, 8 - p[0].split('.').length)) + '.' + p[1], name: p[2], lat: p[3], lon: p[4], kind: 'place', fcode: p[5] }))); after(d.code + ': ' + pts.length + ' points incl. GeoNames places'); }
@@ -544,7 +557,7 @@
     if (!/^\d+\.\d+\.\d+$/.test(cc)) return;
     $('back-country').href = 'country.html?code=' + cc; pts = []; placesLoaded = false; fitted = false; points.clearLayers();
     Object.keys(BR).forEach(k => delete BR[k]); Object.keys(brWant).forEach(k => delete brWant[k]); [munGrp, disGrp, regGrp, namGrp].forEach(g => g.clearLayers()); DF = null; DFH = new Set(); DFC = new Set(); loadBranch(cc); loadScript('data/own/' + cc + '.js' + VB, () => {}); loadScript('data/df/' + cc + '.js' + VB, () => {});
-    loadScript('data/units/' + cc + '.js' + VB, () => {});
+    loadScript('data/units/' + cc + '.js' + VB, () => {}); loadScript('data/sq/' + cc + '.js' + VB, () => {});
     loadScript('data/pts/' + cc + '.js' + VB, () => status('no register points for ' + cc + ' — try GeoNames places, or type a code and draw'));
   }
   $('places-btn').onclick = () => { const cc = $('cc').value.trim(); if (!cc || placesLoaded) return; loadScript('data/places/' + cc + '.js' + VB, () => status('no places file for ' + cc + ' (countries over 30,000 places are not on the site)')); };
@@ -602,7 +615,16 @@
   $('draw').onclick = () => { editing = false; if ($('admsel').value) { $('admsel').value = ''; const c = $('code').value.trim(); if (c && unitByCode(c)) { $('code').value = ''; $('name').value = ''; $('sel').textContent = 'nothing selected'; sel = null; selMark.clearLayers(); } } if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; } if (work) { map.removeLayer(work); work = null; } map.pm.enableDraw('Polygon', { snappable: true, finishOn: null }); status('click vertices; click the first vertex to close (double-click also finishes) — it will be saved as ' + ($('code').value.trim() ? $('name').value.trim() + ' ' + $('code').value.trim() : '(pick or type a code before Save)')); };
   map.on('pm:create', e => { map.pm.disableDraw(); e.layer._zdirty = true; setWork(e.layer); keepWork(); status('outline closed — check it, then Save'); });
   $('edit').onclick = () => { editing = true; if (work) { if (work.pm) work.pm.enable(EDITOPT); status('drag vertices; click the midpoint of an edge to add one'); return; } const code = $('code').value.trim(); const ft = saved.get(code); if (!ft) { if (unitByCode(code)) { editUnit(code); return; } status('nothing to edit — draw first, or select an orange outline'); return; } const lyr = L.geoJSON(ft).getLayers()[0]; lyr.addTo(map); setWork(lyr); const thinned = thinLayer(lyr); if (thinned) status(thinned + ' piled-up vertices removed'); if (lyr.pm) lyr.pm.enable(EDITOPT); status('editing the saved outline of ' + code); };
-  $('clear').onclick = () => { if (PM) map.pm.disableDraw(); if (work) { map.removeLayer(work); work = null; } $('save').disabled = true; $('dl').disabled = true; dropWork(); status('discarded'); };
+  // Discard keeps the last discarded outline on this device (ZSS 2026-10-21: Vakiri was discarded by accident), so Undo discard can bring it back
+  const UNDOKEY = 'zss.trace.discarded';
+  function showUndisc() { let has = false; try { has = !!localStorage.getItem(UNDOKEY); } catch (e) {} const b = $('undisc'); if (b) b.hidden = !has; }
+  $('clear').onclick = () => { keepWork(); let kept = null; try { kept = localStorage.getItem(WKEY); if (kept) localStorage.setItem(UNDOKEY, kept); } catch (e) {}
+    if (PM) map.pm.disableDraw(); if (work) { map.removeLayer(work); work = null; } $('save').disabled = true; $('dl').disabled = true; dropWork(); showUndisc();
+    status(kept ? 'discarded — Undo discard brings it back' : 'discarded'); };
+  $('undisc').onclick = () => { if (work) { status('an outline is open — Save or Discard it first'); return; }
+    let k = null; try { k = localStorage.getItem(UNDOKEY); if (k) { localStorage.setItem(WKEY, k); localStorage.removeItem(UNDOKEY); } } catch (e) {}
+    showUndisc(); if (!k) return; offerWork(); const y = $('wb-yes'); if (y) y.click(); };
+  setTimeout(showUndisc, 0);
   // ---- unsaved work kept on this device (ZSS 2026-10-19): the outline being drawn or changed is copied every 3 s,
   // so a reload, a closed tab or a crash does not lose it; Save or Discard clears the copy
   const WKEY = 'zss.trace.work'; let lastKept = '';
@@ -839,7 +861,7 @@
   $('dot-add').onclick = () => { if (moveOn) $('dot-move').click(); dotMode = !dotMode; map.getContainer().classList.toggle('adding', dotMode); $('dot-add').setAttribute('aria-pressed', String(dotMode));
     status(dotMode ? 'tap the map where the place is (zoom in first for a good spot)' : 'adding a dot cancelled'); };
   map.on('click', e => { if (!dotMode || (PM && map.pm.globalDrawModeEnabled())) return; dotMode = false; map.getContainer().classList.remove('adding'); $('dot-add').setAttribute('aria-pressed', 'false'); startAdd(e.latlng); });
-  $('dot-move').onclick = () => { moveOn = !moveOn; $('dot-move').setAttribute('aria-pressed', String(moveOn)); if (dotMode) $('dot-add').click();
+  $('dot-move').onclick = () => { if (!moveOn && sqOn) $('sq-move').click(); moveOn = !moveOn; $('dot-move').setAttribute('aria-pressed', String(moveOn)); if (dotMode) $('dot-add').click();
     if (moveOn && map.getZoom() < 13) status('zoom in closer to drag dots'); drawPoints(); };
   map.on('zoomend', () => { if (moveOn) drawPoints(); });
   $('dot-kind').onchange = () => { if (draft && draft.action === 'add') suggest(); };
@@ -847,6 +869,39 @@
   $('dot-name').oninput = () => { if (draft) draft.name = $('dot-name').value; };
   $('dot-cancel').onclick = () => { closeForm(); status('dot not saved'); };
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && dotMode) $('dot-add').click(); });
+  // ---- squares: drag a unit's ■ to where it should sit; Save squares writes geometry/own/squares-<time>.sq.json
+  // (iPad: the share sheet); Claude folds it into squares/<cc>.csv with apply_squares.py and logs it in POINT-CHANGES.csv
+  function sqUI() { const n = Object.values(PSQ).filter(q => !q.saved).length;
+    $('sq-row').hidden = !(sqOn || n); $('sq-save').disabled = !n; $('sq-back').disabled = !n;
+    $('sq-n').hidden = !n; $('sq-n').textContent = n ? n + ' square' + (n > 1 ? 's' : '') + ' moved, not saved yet: ' + Object.values(PSQ).filter(q => !q.saved).map(q => q.name).join(', ') : ''; }
+  function moveSquare(code, name, from, ll) {
+    const prev = PSQ[code], f = L.latLng(from);
+    PSQ[code] = { code, name, lat: +ll.lat.toFixed(6), lon: +ll.lng.toFixed(6), old: prev ? prev.old : { lat: +f.lat.toFixed(6), lon: +f.lng.toFixed(6) },
+      placed_at: new Date().toISOString().slice(0, 10), by: ($('who').value || '').toUpperCase() || null, zoom: map.getZoom(),
+      over: baseName === 'sat' ? 'Esri World Imagery' : baseName === 'osm' ? 'OpenStreetMap' : 'OpenTopoMap', saved: false };
+    putSq(); sqUI(); drawUnitDots(); status(name + ' square moved — move more, then Save squares');
+  }
+  async function saveSquares() {
+    const list = Object.values(PSQ).filter(q => !q.saved); if (!list.length) return;
+    const d = { type: 'zss-squares', squares: list.map(q => { const o = Object.assign({}, q); delete o.saved; return o; }) };
+    const fname = 'squares-' + new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-') + '.sq.json', text = JSON.stringify(d, null, 1);
+    let ok = false;
+    if (dirHandle) {
+      try { const own = await ownDir(true); const fh = await own.getFileHandle(fname, { create: true }); const w = await fh.createWritable(); await w.write(text); await w.close();
+        list.forEach(q => sqFiles.set(q.code, [q.lat, q.lon])); ok = true; status('saved geometry/own/' + fname); }
+      catch (e) { status('squares not saved: ' + e.message); return; }
+    } else { const file = new File([text], fname, { type: 'application/json' });
+      if (NOFS && navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file] }); ok = true; status('shared ' + fname + ' — it belongs in OneDrive/Desktop/ZSS FILES/register/geometry/own'); } catch (e) { status(e.name === 'AbortError' ? 'not shared — the squares stay on this device (lime ring); Save squares again to share them' : 'share failed: ' + e.message); } }
+      else { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fname; a.click(); ok = true; status('downloaded ' + fname + ' — put it in geometry/own/'); } }
+    if (ok) { list.forEach(q => { PSQ[q.code].saved = true; }); putSq(); }
+    sqUI(); drawUnitDots();
+  }
+  $('sq-move').onclick = () => { sqOn = !sqOn; $('sq-move').setAttribute('aria-pressed', String(sqOn));
+    if (sqOn) { if (moveOn) $('dot-move').click(); if (dotMode) $('dot-add').click(); if (!$('lyr-udot').checked) { $('lyr-udot').checked = true; $('lyr-udot').dispatchEvent(new Event('change')); } }
+    sqUI(); drawUnitDots(); status(sqOn ? 'drag a square to where it should sit (A.U. squares show from zoom 10), then Save squares' : 'moving squares off'); };
+  $('sq-save').onclick = saveSquares;
+  $('sq-back').onclick = () => { Object.keys(PSQ).forEach(c => { if (!PSQ[c].saved) delete PSQ[c]; }); putSq(); sqUI(); drawUnitDots(); status('squares put back'); };
+  setTimeout(sqUI, 0);
   async function saveDot() {
     if (!draft) return;
     const code = $('dot-code').value.trim(), name = $('dot-name').value.trim(), kind = draft.action === 'add' ? $('dot-kind').value : (draft.kind || null);
