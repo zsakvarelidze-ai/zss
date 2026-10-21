@@ -418,9 +418,19 @@
   }
   // traced outlines without a chosen folder: the copy published with the site (data/own/<cc>.js)
   // codes the published site already has an outline for (ZSS 2026-10-21: 'forget them here' only drops copies the site has)
+  // ZSS 2026-10-21: and only when the site's copy has the same shape — the finished Jugaani was forgotten while the site still had the old one
   const SITEC = new Map(); let SITE_LOADED = false;
+  function ringsAreaEO(rs) {   // area of rings read even-odd (a ring inside an odd number of others is a hole); only for comparing two copies of one outline
+    const inR = (pt, r) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) if ((r[i][1] > pt[1]) !== (r[j][1] > pt[1]) && pt[0] < (r[j][0] - r[i][0]) * (pt[1] - r[i][1]) / (r[j][1] - r[i][1]) + r[i][0]) c = !c; return c; };
+    return rs.reduce((a, r, i) => a + (rs.filter((o, j) => j !== i && inR(r[0], o)).length % 2 ? -1 : 1) * ringAreaLL(r), 0);
+  }
+  function siteHasSame(code, fc) {
+    if (!SITEC.has(code)) return false; const ft = fc && (fc.features ? fc.features[0] : fc), g = ft && ft.geometry; if (!g) return false;
+    const rs = (g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []).flatMap(q => q);
+    const a = SITEC.get(code), b = Math.abs(ringsAreaEO(rs)); return Math.abs(a - b) <= 0.01 * Math.max(a, b);
+  }
   function siteOwn(d) {
-    SITE_LOADED = true; d.units.forEach(u => SITEC.set(u.c, ((u.r || [])[0] || '').length));
+    SITE_LOADED = true; d.units.forEach(u => { try { SITEC.set(u.c, Math.abs(ringsAreaEO((u.r || []).map(ringLL)))); } catch (e) {} });
     if (dirHandle || neighbours.getLayers().length) return;
     const pend = pendAll();
     d.units.forEach(u => { if (pend[u.c]) return;
@@ -486,14 +496,14 @@
     el.innerHTML = kept ? 'Kept on this device (lime green) — ' + kept + '. Once they are in the folder, <a href="#" id="pend-clear">forget them here</a>.' : '';
     const c = $('pend-clear'); if (c) c.onclick = e => { e.preventDefault();
       if (!SITE_LOADED) { status('the published outlines have not loaded yet — try again in a moment'); return; }
-      const P = Object.assign({}, pendAll()), Dd = pendDots(), safe = codes.filter(k => SITEC.has(k)), keep = codes.filter(k => !SITEC.has(k));
+      const P = Object.assign({}, pendAll()), Dd = pendDots(), safe = codes.filter(k => siteHasSame(k, P[k])), keep = codes.filter(k => !siteHasSame(k, P[k]));
       if (c.dataset.sure) { safe.forEach(k => { delete P[k]; saved.delete(k); });
         try { if (Object.keys(P).length) localStorage.setItem(PKEY, JSON.stringify(P)); else localStorage.removeItem(PKEY);
           const onSite = new Set(pts.filter(q => q.kind === 'row' && !q.fresh).map(q => q.code)), D2 = {}; Object.keys(Dd).forEach(k => { const d = Dd[k]; const q = pts.find(x => x.code === k && x.kind === 'row' && !x.fresh); if (!(q && Math.abs(q.lat - d.lat) < 1e-5 && Math.abs(q.lon - d.lon) < 1e-5)) D2[k] = d; });
           if (Object.keys(D2).length) localStorage.setItem(DKEY, JSON.stringify(D2)); else localStorage.removeItem(DKEY); } catch (er) {} PENDC = null;
         drawPending(); mergeDots(); drawPoints(); renderList();
-        status(safe.length + ' copies forgotten (the site has them)' + (keep.length ? '; ' + keep.length + ' kept because the site does not have them yet: ' + keep.join(', ') + ' — Save them to the folder' : '')); }
-      else { c.dataset.sure = '1'; c.textContent = 'tap again to forget the ' + safe.length + ' the site already has' + (keep.length ? ' (' + keep.length + ' not on the site yet stay here)' : ''); } };
+        status(safe.length + ' copies forgotten (the site has them)' + (keep.length ? '; ' + keep.length + ' kept because the site does not have them yet (or has an older shape): ' + keep.join(', ') + ' — Save them to the folder' : '')); }
+      else { c.dataset.sure = '1'; c.textContent = 'tap again to forget the ' + safe.length + ' the site already has' + (keep.length ? ' (' + keep.length + ' not on the site yet, or newer than the site\'s, stay here)' : ''); } };
   }
   async function loadNeighbours() {
     neighbours.clearLayers(); saved.clear(); dotFiles.clear(); sqFiles.clear();
