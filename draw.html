@@ -425,7 +425,7 @@
     const pend = pendAll();
     d.units.forEach(u => { if (pend[u.c]) return;
       const rings = u.r.map(r => ringLL(r).map(([la, lo]) => [lo, la]));
-      const ft = { type: 'Feature', properties: { code: u.c, name: u.n }, geometry: { type: 'Polygon', coordinates: rings } };
+      const ft = { type: 'Feature', properties: { code: u.c, name: u.n }, geometry: splitRings({ type: 'Polygon', coordinates: rings }) };
       saved.set(u.c, ft);
       const big = u.c.split('.').length <= 8;
       const lyr = L.geoJSON(ft, { style: ownStyle(u.c) }).addTo(neighbours); lyr._zcode = u.c;
@@ -666,11 +666,21 @@
   setTimeout(offerWork, 1500);
   $('who').value = localStorage.getItem('zss.trace.who') || ''; $('who').onchange = e => localStorage.setItem('zss.trace.who', e.target.value.trim().toUpperCase());
 
+  // a polygon whose later rings lie outside the first is really several parts (ZSS 2026-10-21: Jugaani's two parts were saved
+  // as one polygon and vanished) — each ring outside the others becomes its own part, a ring inside one becomes its hole
+  function splitRings(g) {
+    if (!g || g.type !== 'Polygon' || g.coordinates.length < 2) return g;
+    const rs = g.coordinates, inR = (pt, r) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) if ((r[i][1] > pt[1]) !== (r[j][1] > pt[1]) && pt[0] < (r[j][0] - r[i][0]) * (pt[1] - r[i][1]) / (r[j][1] - r[i][1]) + r[i][0]) c = !c; return c; };
+    const depth = rs.map((r, i) => rs.filter((o, j) => j !== i && inR(r[0], o)).length), parts = [];
+    rs.forEach((r, i) => { if (depth[i] % 2 === 0) parts.push([r]); });
+    rs.forEach((r, i) => { if (depth[i] % 2 === 0) return; const hosts = parts.filter(q => inR(r[0], q[0])).sort((a, b) => ringAreaLL(a[0]) - ringAreaLL(b[0])); if (hosts.length) hosts[0].push(r); });
+    return parts.length === 1 ? { type: 'Polygon', coordinates: parts[0] } : { type: 'MultiPolygon', coordinates: parts };
+  }
   function feature() {
     const code = $('code').value.trim(); if (!code) { status('give the outline a code'); return null; }
     if (!/^\d+(\.\d+)+$/.test(code)) { status('a code is digits and dots: 3.6.5.1.2.3.4.0.12'); return null; }
     if (!work) { status('nothing drawn'); return null; }
-    const gj = work.toGeoJSON(); if (work.pm) work.pm.disable();
+    const gj = work.toGeoJSON(); if (work.pm) work.pm.disable(); gj.geometry = splitRings(gj.geometry);
     const ring = gj.geometry.type === 'MultiPolygon' ? gj.geometry.coordinates[0][0] : gj.geometry.coordinates[0]; if (!ring || ring.length < 4) { status('the outline needs at least three vertices'); return null; }
     gj.properties = { code, name: $('name').value.trim(), level: code.split('.').length, licence: 'own', status: 'asserted', kind: kindOf(code).replace('half of the country', 'region') + ' outline',
       source: ($('basis').value === 'napr' ? 'ZSS, traced by hand following the NAPR settlement-boundary layer (maps.gov.ge, working version) over ' : $('basis').value === 'other' ? 'ZSS, traced by hand from another map over ' : 'ZSS, traced by hand over ') + (baseName === 'sat' ? 'Esri World Imagery' : baseName === 'osm' ? 'OpenStreetMap' : 'OpenTopoMap'),
