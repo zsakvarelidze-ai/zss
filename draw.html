@@ -120,7 +120,7 @@
         <label class="lyr"><input type="checkbox" id="lyr-au" checked> <i style="background:#ff9f43"></i>A.U.s</label>
         <label class="lyr"><input type="checkbox" id="lyr-mun-col"> <i style="background:linear-gradient(90deg,#ff4fa3,#4fd1ff,#34d399,#facc15);width:14px;height:9px"></i>Colour by municipality</label>
         <label class="lyr"><input type="checkbox" id="lyr-df"> <i style="background:#ff5a5f"></i><span title="Abkhazia and South Ossetia as they are run now">De facto</span></label>
-        <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Colours by level: <b style="color:#ffd166">regions</b>, <b style="color:#fff">municipalities</b>, <b style="color:#7cc4ff">Tbilisi districts</b>, <b style="color:#ff9f43">administrative units (A.U.)</b>, <b style="color:#3de0c8">neighbourhoods</b>, <b style="color:#ff4fa3">settlements</b>. Each unit has a ■ square in its colour (regions from zoom 6, municipalities from 8, A.U.s from 10): tap it to select the unit and edit its line. A hollow ■ (from zoom 11) is an A.U. with no outline yet. An A.U. square sits just above its centre village (the one with its name, else its first), in the middle of that village's outline, and moves with it — tap it, then Draw.</p>
+        <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Colours by level: <b style="color:#ffd166">regions</b>, <b style="color:#fff">municipalities</b>, <b style="color:#7cc4ff">Tbilisi districts</b>, <b style="color:#ff9f43">administrative units (A.U.)</b>, <b style="color:#3de0c8">neighbourhoods</b>, <b style="color:#ff4fa3">settlements</b>. Each unit has a ■ square in its colour (regions from zoom 6, municipalities from 8, A.U.s from 10): tap it to select the unit and edit its line. A hollow ■ (from zoom 11) is an A.U. with no outline yet. An A.U. with an outline has its square in the middle of it; one without sits just above its centre village (the one with its name, else its first) — tap it, then Draw.</p>
       </div>
       <div class="row"><button id="places-btn" title="Add the GeoNames settlements of this country as amber points (code at L9, provisional until the outline is saved)">Load GeoNames places</button></div>
       <div class="list" id="list"></div>
@@ -308,31 +308,55 @@
   }
   // ---- unit squares: one ■ per region, municipality, Tbilisi district, A.U. and neighbourhood, in its colour; tap to edit
   const udots = L.layerGroup().addTo(map), UPT = new Map();
-  function interiorPoint(ring) {   // ring: [[lat, lon], ...] — the middle of the widest stretch across it
-    let s = 90, n = -90; ring.forEach(p => { s = Math.min(s, p[0]); n = Math.max(n, p[0]); });
-    let best = null, bw = -1;
-    for (const f of [.5, .4, .6, .3, .7, .2, .8]) { const y = s + (n - s) * f, xs = [];
-      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const a = ring[i], b = ring[j];
-        if ((a[0] > y) !== (b[0] > y)) xs.push(a[1] + (y - a[0]) * (b[1] - a[1]) / (b[0] - a[0])); }
-      xs.sort((p, q) => p - q);
-      for (let k = 0; k + 1 < xs.length; k += 2) if (xs[k + 1] - xs[k] > bw) { bw = xs[k + 1] - xs[k]; best = [y, (xs[k] + xs[k + 1]) / 2]; }
-      if (best && f === .5) break; }
-    return best;
+  // the middle of an outline: inside it, away from its edges and close to its centre of area —
+  // the point with the most (distance to the edge − half the distance to the centre), in km (ZSS 2026-10-21: centre the squares and dots).
+  // The Sighnaghi village dots were centred in the register with this same rule (POINT-CHANGES 2026-10-21).
+  function interiorPoint(ring) {   // ring: [[lat, lon], ...]
+    if (!ring || ring.length < 3) return null;
+    const k = Math.cos(ring[0][0] * Math.PI / 180) * 111.32, st = Math.max(1, Math.ceil(ring.length / 120));
+    const P = []; for (let i = 0; i < ring.length; i += st) P.push([ring[i][1] * k, ring[i][0] * 111.32]);
+    if (P.length < 3) return null; P.push(P[0]);
+    let A = 0, cx = 0, cy = 0;
+    for (let i = 0; i + 1 < P.length; i++) { const f = P[i][0] * P[i + 1][1] - P[i + 1][0] * P[i][1]; A += f; cx += (P[i][0] + P[i + 1][0]) * f; cy += (P[i][1] + P[i + 1][1]) * f; }
+    if (!A) return null; cx /= 3 * A; cy /= 3 * A;
+    const score = (x, y) => { let inside = false, md = Infinity;
+      for (let i = 0; i + 1 < P.length; i++) { const [ax, ay] = P[i], [bx, by] = P[i + 1];
+        if ((ay > y) !== (by > y) && x < (bx - ax) * (y - ay) / (by - ay) + ax) inside = !inside;
+        const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l)) : 0;
+        md = Math.min(md, Math.hypot(x - ax - t * dx, y - ay - t * dy)); }
+      return inside ? md - 0.5 * Math.hypot(x - cx, y - cy) : -1e9; };
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity; P.forEach(([x, y]) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); });
+    const n = 10; let sx = (x1 - x0) / n, sy = (y1 - y0) / n, best = [-1e18, cx, cy];
+    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) { const x = x0 + i * sx, y = y0 + j * sy, v = score(x, y); if (v > best[0]) best = [v, x, y]; }
+    if (best[0] < -1e8) return null;
+    for (let r = 0; r < 4; r++) { sx /= 3; sy /= 3; const bx = best[1], by = best[2];
+      for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) { const v = score(bx + i * sx, by + j * sy); if (v > best[0]) best = [v, bx + i * sx, by + j * sy]; } }
+    return [best[2] / 111.32, best[1] / k];
   }
+  function inRingLatLon(p, r) { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) if ((r[i][0] > p[0]) !== (r[j][0] > p[0]) && p[1] < (r[j][1] - r[i][1]) * (p[0] - r[i][0]) / (r[j][0] - r[i][0]) + r[i][1]) c = !c; return c; }
+  // every ring of a code's outline as [[lat, lon], ...] (a site copy keeps all its parts as rings of one polygon)
+  function ringsOf(code) { const ft = saved.get(code);
+    if (ft && ft.geometry) { const g = ft.geometry, polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+      return polys.flatMap(q => q).map(r => r.map(c => [c[1], c[0]])); }
+    const hit = unitByCode(code); return hit ? hit.u.r.map(ringLL) : []; }
+  // an A.U.'s square: the middle of the part its centre village is in, else of its biggest part
+  function auMiddle(code, near) { const rs = ringsOf(code); if (!rs.length) return null;
+    if (near) { const hit = rs.filter(r => inRingLatLon(near, r)); if (hit.length % 2) { let b = hit[0]; hit.forEach(r => { if (ringAreaLL(r) > ringAreaLL(b)) b = r; }); const p = interiorPoint(b); if (p) return p; } }
+    return bigRingPoint(rs); }
   const ringAreaLL = r => { let a = 0; for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][1] + r[i][1]) * (r[j][0] - r[i][0]); return Math.abs(a); };
   function bigRingPoint(rings) { if (!rings.length) return null; let b = rings[0]; rings.forEach(r => { if (ringAreaLL(r) > ringAreaLL(b)) b = r; }); return interiorPoint(b); }
   function unitPoint(code) {
     if (UPT.has(code)) return UPT.get(code); let p = null;
     const ft = saved.get(code);
     if (ft && ft.geometry) { const g = ft.geometry, polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
-      p = bigRingPoint(polys.map(q => q[0].map(c => [c[1], c[0]]))); }
+      p = bigRingPoint(polys.flatMap(q => q).map(r => r.map(c => [c[1], c[0]]))); }
     if (!p) { const hit = unitByCode(code); if (hit) p = bigRingPoint(hit.u.r.map(ringLL)); }
     if (p) UPT.set(code, p); return p;
   }
   function villagePoint(code) {   // middle of the village's outline (saved, or kept on this device), else its dot
     const pf = pendAll()[code], ft = saved.get(code) || (pf && (pf.features ? pf.features[0] : pf));
     if (ft && ft.geometry) { const g = ft.geometry, polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
-      const p = bigRingPoint(polys.map(q => q[0].map(c => [c[1], c[0]]))); if (p) return p; }
+      const p = bigRingPoint(polys.flatMap(q => q).map(r => r.map(c => [c[1], c[0]]))); if (p) return p; }
     const d = pts.find(q => q.code === code && q.kind === 'row'); return d ? [d.lat, d.lon] : null;
   }
   const ACC = new Map();   // A.U. square positions, worked out once until the dots or outlines change
@@ -364,10 +388,11 @@
       if (v.k === 'administrative unit') {
         if (!auOn) return;
         const hasLine = !!unitPoint(c); if (!hasLine && z < 11) return;
-        // the square sits on the A.U.'s centre village (same name, else its first village): the middle of its outline, else its dot
+        // with an outline, the square sits in the middle of it (the part holding its centre village; ZSS 2026-10-21);
+        // without one, on the A.U.'s centre village (same name, else its first village), just above its dot
         const cv = auCentre(c, v.n); let p = cv, cls = hasLine ? 'au small' : 'au none';
-        if (cv) cls += ' lift';
-        else if (hasLine) p = unitPoint(c);
+        if (hasLine) { const k = 'm:' + c; if (!ACC.has(k)) ACC.set(k, auMiddle(c, cv) || unitPoint(c)); p = ACC.get(k); }
+        else if (cv) cls += ' lift';
         else { const own = pts.filter(q => q.kind === 'row' && q.code.startsWith(c + '.')); if (!own.length) return;
           p = [own.reduce((a, q) => a + q.lat, 0) / own.length, own.reduce((a, q) => a + q.lon, 0) / own.length]; }
         add(p, c, v.n, cls, hasLine ? 'A.U.' : 'A.U., no outline yet');
