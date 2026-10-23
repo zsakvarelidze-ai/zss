@@ -123,6 +123,7 @@
         <label class="lyr"><input type="checkbox" id="lyr-nam"> <i style="background:transparent;border:1px solid #888"></i>Names</label>
         <label class="lyr"><input type="checkbox" id="lyr-udot" checked> <i style="background:#ff9f43;width:9px;height:9px"></i>Unit squares ■</label>
         <label class="lyr"><input type="checkbox" id="lyr-au" checked> <i style="background:#ff9f43"></i>A.U.s</label>
+        <label class="lyr"><input type="checkbox" id="lyr-set" checked> <i style="background:#ff4fa3"></i>Settlement outlines</label>
         <label class="lyr"><input type="checkbox" id="lyr-mun-col"> <i style="background:linear-gradient(90deg,#ff4fa3,#4fd1ff,#34d399,#facc15);width:14px;height:9px"></i>Colour by municipality</label>
         <label class="lyr"><input type="checkbox" id="lyr-df"> <i style="background:#ff5a5f"></i><span title="Abkhazia and South Ossetia as they are run now">De facto</span></label>
         <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Colours by level: <b style="color:#ffd166">regions</b>, <b style="color:#fff">municipalities</b>, <b style="color:#7cc4ff">Tbilisi districts</b>, <b style="color:#ff9f43">administrative units (A.U.)</b>, <b style="color:#3de0c8">neighbourhoods</b>, <b style="color:#ff4fa3">settlements</b>. Each unit has a ■ square in its colour (regions from zoom 6, municipalities from 8, A.U.s from 10): tap it to select the unit and edit its line. A hollow ■ (from zoom 11) is an A.U. with no outline yet. An A.U. with an outline has its square in the middle of it; one without sits just above its centre village (the one with its name, else its first) — tap it, then Draw.</p>
@@ -197,6 +198,7 @@
   // colour by municipality (ZSS 2026-10-17): every A.U., district, neighbourhood and settlement takes its municipality's colour;
   // the kind still shows in the line: A.U./district dashed, neighbourhood dotted, settlement solid and filled
   const MUNPAL = ['#ff4fa3', '#4fd1ff', '#34d399', '#facc15', '#a78bfa', '#ff9f43', '#f87171', '#2dd4bf', '#60a5fa', '#f472b6', '#a3e635', '#fb923c'];
+  let setOn = (() => { try { return localStorage.getItem('zss.trace.set') !== '0'; } catch (e) { return true; } })();   // settlement outlines shown (ZSS 2026-10-23)
   let byMun = (() => { try { return localStorage.getItem('zss.trace.bymun') !== '0'; } catch (e) { return true; } })();
   // A.U.s hidden by hand (ZSS 2026-10-23): a municipality code hides all its A.U.s and their villages; an A.U. code hides it and its villages. Kept on this device.
   const HKEY = 'zss.trace.hidden'; let HID = (() => { try { return new Set(JSON.parse(localStorage.getItem(HKEY) || '[]')); } catch (e) { return new Set(); } })();
@@ -216,6 +218,7 @@
     if (DFC.has(code)) return dfOn ? { color: DFCOL, weight: 2.2, opacity: .95, fillOpacity: 0, dashArray: '' } : HIDDEN;
     const n = String(code).split('.').length;
     if (!auOn && n === 7 && isAU(code)) return HIDDEN;
+    if (!setOn && n >= 9) return HIDDEN;
     if (isHid(code)) return HIDDEN;
     if (byMun && n >= 7) { const c = munColor(code);
       if (n === 7) return { color: c, weight: 2, opacity: .95, fillColor: c, fillOpacity: .06, dashArray: '6 4' };
@@ -640,6 +643,9 @@
   }
   $('au-tree').addEventListener('toggle', buildAUTree);
   $('aut-all').onclick = () => { HID.clear(); applyHid(); status('every A.U. shown'); };
+  $('lyr-set').checked = setOn;
+  $('lyr-set').onchange = e => { setOn = e.target.checked; try { localStorage.setItem('zss.trace.set', setOn ? '1' : '0'); } catch (er) {}
+    restyleOwn(); status(setOn ? 'settlement outlines shown' : 'settlement outlines hidden — dots stay (Settlement dots hides them)'); };
   $('lyr-df').checked = dfOn;
   $('lyr-df').onchange = e => { dfOn = e.target.checked; try { localStorage.setItem('zss.trace.df', dfOn ? '1' : '0'); } catch (er) {}
     drawAdmin(); restyleOwn();
