@@ -206,7 +206,11 @@
   let DF = null, DFH = new Set(), DFC = new Set();
   let auOn = (() => { try { return localStorage.getItem('zss.trace.au') !== '0'; } catch (e) { return true; } })();   // A.U. outlines and squares shown
   const DFCOL = '#ff5a5f', HIDDEN = { opacity: 0, fillOpacity: 0 };
-  function munColor(code) { const s = String(code).split('.'); if (s.length < 7) return null; return MUNPAL[((+s[5] || 0) + 5 * (+s[4] || 0)) % MUNPAL.length]; }
+  // colour by municipality (ZSS 2026-10-23): one hue per region, its municipalities from light (first) to dark (last)
+  function munColor(code) { const s = String(code).split('.'); if (s.length < 7) return null;
+    const reg = s.slice(0, 5).join('.'), ri = ((+s[3] || 1) - 1) * 6 + ((+s[4] || 1) - 1), h = Math.round((330 + ((ri * 5) % 13) * 360 / 13) % 360);   // 13 hues 28 degrees apart, neighbouring regions far apart
+    const sib = BR[reg] && BR[reg].units ? BR[reg].units.length : 10, k = Math.max(0, (+s[5] || 1) - 1), t = sib > 1 ? Math.min(1, k / (sib - 1)) : 0;
+    return 'hsl(' + h + ',85%,' + Math.round(82 - 40 * t) + '%)'; }
   function ownStyle(code) {
     if (DF && dfOn && (DFH.has(code) || DF.swap[code])) return HIDDEN;   // its de facto shape comes from data/df
     if (DFC.has(code)) return dfOn ? { color: DFCOL, weight: 2.2, opacity: .95, fillOpacity: 0, dashArray: '' } : HIDDEN;
