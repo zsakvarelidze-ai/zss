@@ -128,7 +128,7 @@
         <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Colours by level: <b style="color:#ffd166">regions</b>, <b style="color:#fff">municipalities</b>, <b style="color:#7cc4ff">Tbilisi districts</b>, <b style="color:#ff9f43">administrative units (A.U.)</b>, <b style="color:#3de0c8">neighbourhoods</b>, <b style="color:#ff4fa3">settlements</b>. Each unit has a ■ square in its colour (regions from zoom 6, municipalities from 8, A.U.s from 10): tap it to select the unit and edit its line. A hollow ■ (from zoom 11) is an A.U. with no outline yet. An A.U. with an outline has its square in the middle of it; one without sits just above its centre village (the one with its name, else its first) — tap it, then Draw.</p>
       </div>
       <details id="au-tree"><summary>A.U.s one by one — untick a municipality to hide all its A.U.s, or one A.U. to hide just it (with its villages)</summary>
-        <div class="row" style="margin:4px 0"><button id="aut-all" class="aut-x">Show all</button></div><div id="au-list"></div></details>
+        <div class="row" style="margin:4px 0"><button id="aut-all" class="aut-x" title="show again every municipality and A.U. you unticked">Unhide all</button></div><div id="au-list"></div></details>
       <div class="row"><button id="places-btn" title="Add the GeoNames settlements of this country as amber points (code at L9, provisional until the outline is saved)">Load GeoNames places</button></div>
       <div class="list" id="list"></div>
       <p class="hint">Green: register rows with a point. Amber: GeoNames places — their code is written at L9, parent + 0 for each skipped tier + n, and becomes a register row when the outline is saved. Pink: already outlined. Or click anywhere on the map with nothing selected and the outline is saved under the parent you type.</p>
@@ -610,6 +610,7 @@
   function applyHid() { putHid(); restyleOwn(); drawUnitDots(); drawPoints(); buildAUTree(); }
   function buildAUTree() {
     const box = $('au-list'); if (!box || !$('au-tree').open) return;
+    $('aut-all').disabled = !HID.size; $('aut-all').textContent = HID.size ? 'Unhide all (' + HID.size + ' hidden)' : 'Nothing hidden';
     const kids = new Map(); UN.forEach((v, c) => { if (c.split('.').length !== 7) return; const m = c.split('.').slice(0, 6).join('.'); if (!kids.has(m)) kids.set(m, []); kids.get(m).push([c, v]); });
     const muns = [...kids.keys()].filter(m => kids.get(m).some(([c]) => saved.has(c)) || HID.has(m) || kids.get(m).some(([c]) => HID.has(c)));
     const nm = m => { const h = unitByCode(m); return h ? h.u.n : m; };
