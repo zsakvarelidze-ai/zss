@@ -449,6 +449,12 @@
   }
   function siteOwn(d) {
     SITE_LOADED = true; d.units.forEach(u => { try { SITEC.set(u.c, Math.abs(ringsAreaEO((u.r || []).map(ringLL)))); } catch (e) {} });
+    // a copy kept on this device goes once the site has a version saved at or after it (ZSS 2026-10-23: lime copies piled up after the lines were fitted)
+    try { const P = Object.assign({}, pendAll()), gone = [];
+      d.units.forEach(u => { const k = P[u.c]; if (!k) return; const at = Date.parse(k.kept_at || '');
+        if ((at && u.t && u.t * 1000 >= at - 120000) || (!at && siteHasSame(u.c, k))) { delete P[u.c]; gone.push(u.c); } });
+      if (gone.length) { PENDC = null; if (Object.keys(P).length) localStorage.setItem(PKEY, JSON.stringify(P)); else localStorage.removeItem(PKEY);
+        gone.forEach(c => saved.delete(c)); drawPending(); status(gone.length + ' outline' + (gone.length > 1 ? 's' : '') + ' kept on this device are on the site now — the copies were dropped'); } } catch (e) {}
     if (dirHandle || neighbours.getLayers().length) return;
     const pend = pendAll();
     d.units.forEach(u => { if (pend[u.c]) return;
