@@ -567,7 +567,12 @@
     defacto: d => { DF = d; DFH = new Set(d.hide || []); DFC = new Set((d.units || []).map(u => u.c)); drawAdmin(); restyleOwn(); },
     squares: d => { SQS = new Map((d.sq || []).map(x => [x[0], [x[1], x[2]]]));
       Object.keys(PSQ).forEach(c => { const q = PSQ[c], s2 = SQS.get(c); if (q.saved && s2 && Math.abs(s2[0] - q.lat) < 1e-5 && Math.abs(s2[1] - q.lon) < 1e-5) delete PSQ[c]; }); putSq(); sqUI(); drawUnitDots(); },
-    pts: d => { pts = pts.filter(p => p.kind === 'place').concat((d.pts || []).map(p => ({ code: p[0], name: p[1], lat: p[2], lon: p[3], kind: 'row' }))); mergeFolderPts(); after(d.code + ': ' + pts.length + ' points'); },
+    pts: d => {
+      // a dot kept on this device stops being lime once the published register has it at the same place (ZSS 2026-10-23: moved dots stayed yellow)
+      try { const site = new Map((d.pts || []).map(p => [p[0], p])), P = pendDots(); let gone = 0;
+        Object.keys(P).forEach(c => { const q = site.get(c); if (q && Math.abs(q[2] - P[c].lat) < 2e-5 && Math.abs(q[3] - P[c].lon) < 2e-5) { delete P[c]; gone++; } });
+        if (gone) { if (Object.keys(P).length) localStorage.setItem(DKEY, JSON.stringify(P)); else localStorage.removeItem(DKEY); } } catch (e) {}
+      pts = pts.filter(p => p.kind === 'place').concat((d.pts || []).map(p => ({ code: p[0], name: p[1], lat: p[2], lon: p[3], kind: 'row' }))); mergeFolderPts(); after(d.code + ': ' + pts.length + ' points'); },
     units: d => { UN.clear(); UNR.clear(); (d.units || []).forEach(u => u[3] ? UNR.add(u[0]) : UN.set(u[0], { n: u[1], k: u[2] })); fillUnits(); restyleOwn(); drawUnitDots(); buildAUTree(); },
     places: d => { placesLoaded = true; pts = pts.concat((d.places || []).map(p => ({ code: p[0] + '.0'.repeat(Math.max(0, 8 - p[0].split('.').length)) + '.' + p[1], name: p[2], lat: p[3], lon: p[4], kind: 'place', fcode: p[5] }))); after(d.code + ': ' + pts.length + ' points incl. GeoNames places'); }
   };
