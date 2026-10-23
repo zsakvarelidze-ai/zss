@@ -208,11 +208,13 @@
   let DF = null, DFH = new Set(), DFC = new Set();
   let auOn = (() => { try { return localStorage.getItem('zss.trace.au') !== '0'; } catch (e) { return true; } })();   // A.U. outlines and squares shown
   const DFCOL = '#ff5a5f', HIDDEN = { opacity: 0, fillOpacity: 0 };
-  // colour by municipality (ZSS 2026-10-23): one hue per region, its municipalities from light (first) to dark (last)
+  // colour by municipality (ZSS 2026-10-23): each region a family of hues, each municipality its own colour in it —
+  // hues spread 70 degrees across the region's municipalities, light and dark taking turns so neighbours differ
   function munColor(code) { const s = String(code).split('.'); if (s.length < 7) return null;
-    const reg = s.slice(0, 5).join('.'), ri = ((+s[3] || 1) - 1) * 6 + ((+s[4] || 1) - 1), h = Math.round((330 + ((ri * 5) % 13) * 360 / 13) % 360);   // 13 hues 28 degrees apart, neighbouring regions far apart
-    const sib = BR[reg] && BR[reg].units ? BR[reg].units.length : 10, k = Math.max(0, (+s[5] || 1) - 1), t = sib > 1 ? Math.min(1, k / (sib - 1)) : 0;
-    return 'hsl(' + h + ',85%,' + Math.round(82 - 40 * t) + '%)'; }
+    const reg = s.slice(0, 5).join('.'), ri = ((+s[3] || 1) - 1) * 6 + ((+s[4] || 1) - 1), H = (330 + ((ri * 5) % 13) * 360 / 13) % 360;
+    const sib = BR[reg] && BR[reg].units ? BR[reg].units.length : 10, k = Math.max(0, (+s[5] || 1) - 1), t = sib > 1 ? Math.min(1, k / (sib - 1)) : .5;
+    const h = Math.round((H - 35 + 70 * t + 360) % 360), l = k % 2 ? 50 : 72;
+    return 'hsl(' + h + ',90%,' + l + '%)'; }
   function ownStyle(code) {
     if (DF && dfOn && (DFH.has(code) || DF.swap[code])) return HIDDEN;   // its de facto shape comes from data/df
     if (DFC.has(code)) return dfOn ? { color: DFCOL, weight: 2.2, opacity: .95, fillOpacity: 0, dashArray: '' } : HIDDEN;
