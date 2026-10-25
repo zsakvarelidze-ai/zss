@@ -518,8 +518,13 @@
       lyr.bindTooltip(((ft.properties || {}).name || code) + ' · kept on this device', { className: 'lbl', sticky: true });
       lyr.on('click', () => { if (!work && !dotMode && !moveOn && !drawingNow()) { selectCode(code, (ft.properties || {}).name || ''); status(code + ' is kept on this device — Edit to change it, Save to share it again'); } }); }
     const el = $('pend'); if (!el) return;
-    const kept = [codes.length ? codes.length + ' outline' + (codes.length > 1 ? 's' : '') + ': ' + codes.map(esc).join(', ') : '', dcodes.length ? dcodes.length + ' dot' + (dcodes.length > 1 ? 's' : '') + ': ' + dcodes.map(esc).join(', ') : ''].filter(Boolean).join('; ');
+    const kept = [codes.length ? codes.length + ' outline' + (codes.length > 1 ? 's' : '') + ': ' + codes.map(c => esc(c) + ' <a href="#" class="pend-x" data-c="' + esc(c) + '" title="drop this copy from this device">×</a>').join(', ') : '', dcodes.length ? dcodes.length + ' dot' + (dcodes.length > 1 ? 's' : '') + ': ' + dcodes.map(esc).join(', ') : ''].filter(Boolean).join('; ');
     el.innerHTML = kept ? 'Kept on this device (lime green) — ' + kept + '. Once they are in the folder, <a href="#" id="pend-clear">forget them here</a>.' : '';
+    // × beside a code drops just that copy (ZSS 2026-10-25: a copy saved under a code the register refiled stays lime for ever otherwise)
+    el.querySelectorAll('.pend-x').forEach(x => x.onclick = e => { e.preventDefault(); const k = x.dataset.c;
+      if (!x.dataset.sure) { x.dataset.sure = '1'; x.textContent = '× tap again to drop ' + k; return; }
+      const P = Object.assign({}, pendAll()); delete P[k]; PENDC = null; try { if (Object.keys(P).length) localStorage.setItem(PKEY, JSON.stringify(P)); else localStorage.removeItem(PKEY); } catch (er) {}
+      saved.delete(k); drawPending(); renderList(); status(k + ' dropped from this device'); });
     const c = $('pend-clear'); if (c) c.onclick = e => { e.preventDefault();
       if (!SITE_LOADED) { status('the published outlines have not loaded yet — try again in a moment'); return; }
       const P = Object.assign({}, pendAll()), Dd = pendDots(), safe = codes.filter(k => siteHasSame(k, P[k])), keep = codes.filter(k => !siteHasSame(k, P[k]));
