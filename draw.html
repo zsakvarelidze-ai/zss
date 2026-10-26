@@ -84,7 +84,7 @@
   .leaflet-container.adding { cursor: crosshair; }
   .udot { width: 12px; height: 12px; margin: -6px 0 0 -6px; border: 2px solid #0b0f12; box-shadow: 0 0 0 1px rgba(255,255,255,.55); border-radius: 2px; cursor: pointer; }
   .udot.reg { background: #ffd166; width: 5px; height: 5px; border-width: 1px; margin: -3.5px 0 0 -3.5px; } .udot.mun { background: #ffffff; width: 4px; height: 4px; border-width: 1px; margin: -3px 0 0 -3px; }   /* much smaller (ZSS 2026-10-23) */
-  .udot.dis { background: #7cc4ff; } .udot.au { background: #ff9f43; } .udot.nbh { background: #3de0c8; width: 10px; height: 10px; margin: -5px 0 0 -5px; }
+  .udot.dis { background: #7cc4ff; } .udot.land { background: #5fd068; } .udot.au { background: #ff9f43; } .udot.nbh { background: #3de0c8; width: 10px; height: 10px; margin: -5px 0 0 -5px; }
   .udot.none { background: transparent; border-color: #ff9f43; box-shadow: none; }
   .udot.lift { margin-top: -24px; }
   .udot.drag { cursor: move; } .udot.hand { outline: 2px solid #c3f73a; outline-offset: 1px; }   /* hand-placed square not on the site yet */
@@ -123,6 +123,7 @@
         <label class="lyr"><input type="checkbox" id="lyr-nam"> <i style="background:transparent;border:1px solid #888"></i>Names</label>
         <label class="lyr"><input type="checkbox" id="lyr-udot" checked> <i style="background:#ff9f43;width:9px;height:9px"></i>Unit squares ■</label>
         <label class="lyr"><input type="checkbox" id="lyr-au" checked> <i style="background:#ff9f43"></i>A.U.s</label>
+        <label class="lyr"><input type="checkbox" id="lyr-land" checked> <i style="background:#5fd068"></i>Lands &amp; reserves</label>
         <label class="lyr"><input type="checkbox" id="lyr-set" checked> <i style="background:#ff4fa3"></i>Settlement outlines</label>
         <label class="lyr"><input type="checkbox" id="lyr-mun-col"> <i style="background:linear-gradient(90deg,#ff4fa3,#4fd1ff,#34d399,#facc15);width:14px;height:9px"></i>Colour by municipality</label>
         <label class="lyr"><input type="checkbox" id="lyr-au-col"> <i style="background:linear-gradient(90deg,#f87171,#facc15,#34d399,#60a5fa,#a78bfa);width:14px;height:9px"></i>Colour by A.U.</label>
@@ -195,7 +196,10 @@
   // one colour per level, the same for the published line and ZSS's traced outline (traced = dashed):
   // regions gold, municipalities white, Tbilisi districts blue, neighbourhoods teal (filled), settlements pink (filled)
   const LV = { reg: '#ffd166', mun: '#ffffff', dis: '#7cc4ff', nbh: '#3de0c8', au: '#ff9f43', set: '#ff4fa3', pend: '#c3f73a' };
-  function isAU(code) { const u = UN.get(code); return u ? u.k === 'administrative unit' : !String(code).startsWith('3.6.5.1.6.1.'); }
+  // lands and reserves (ZSS 2026-10-26): level-7 codes from 101 under a municipality — national parks, reserves, forests, pastures; not A.U.s
+  function isLand(code) { const s = String(code).split('.'); return s.length === 7 && +s[6] >= 101; }
+  let landOn = (() => { try { return localStorage.getItem('zss.trace.land') !== '0'; } catch (e) { return true; } })();
+  function isAU(code) { if (isLand(code)) return false; const u = UN.get(code); return u ? u.k === 'administrative unit' : !String(code).startsWith('3.6.5.1.6.1.'); }
   // colour by municipality (ZSS 2026-10-17): every A.U., district, neighbourhood and settlement takes its municipality's colour;
   // the kind still shows in the line: A.U./district dashed, neighbourhood dotted, settlement solid and filled
   const MUNPAL = ['#ff4fa3', '#4fd1ff', '#34d399', '#facc15', '#a78bfa', '#ff9f43', '#f87171', '#2dd4bf', '#60a5fa', '#f472b6', '#a3e635', '#fb923c'];
@@ -229,6 +233,7 @@
     if (DF && dfOn && (DFH.has(code) || DF.swap[code])) return HIDDEN;   // its de facto shape comes from data/df
     if (DFC.has(code)) return dfOn ? { color: DFCOL, weight: 2.2, opacity: .95, fillOpacity: 0, dashArray: '' } : HIDDEN;
     const n = String(code).split('.').length;
+    if (isLand(code)) return landOn && !isHid(code) ? { color: '#5fd068', weight: 2.2, opacity: .95, fillColor: '#5fd068', fillOpacity: .1, dashArray: '2 6' } : HIDDEN;
     if (!auOn && n === 7 && isAU(code)) return HIDDEN;
     if (!setOn && n >= 9) return HIDDEN;
     if (isHid(code)) return HIDDEN;
@@ -302,14 +307,14 @@
   function fillUnits() {
     const sel = $('unitsel'); if (!sel) return; const keep = sel.value, groups = new Map();
     UN.forEach((v, c) => { if (unitByCode(c)) return; const mc = c.split('.').slice(0, 6).join('.'), m = unitByCode(mc); if (!m) return;
-      if (!groups.has(mc)) groups.set(mc, { n: m.u.n, items: [] }); groups.get(mc).items.push([c, v.n]); });
+      if (!groups.has(mc)) groups.set(mc, { n: m.u.n, items: [] }); groups.get(mc).items.push([c, v.n + (isLand(c) ? ' (' + v.k + ')' : '')]); });
     const g = [...groups.entries()].sort((a, b) => a[1].n.localeCompare(b[1].n));
     sel.innerHTML = '<option value="">— pick a unit to trace or edit (✓ = outlined) —</option>' + g.map(([mc, gr]) => '<optgroup label="' + esc(gr.n) + '">' +
       gr.items.sort((a, b) => a[1].localeCompare(b[1])).map(([c, n]) => '<option value="' + c + '">' + (saved.has(c) ? '✓ ' : '') + esc(n) + '</option>').join('') + '</optgroup>').join('');
     sel.value = keep;
   }
   function kindOf(code) { const n = code.split('.').length, u = UN.get(code);
-    return n <= 4 ? 'half of the country' : n === 5 ? 'region' : n === 6 ? 'municipality' : u && u.k === 'administrative unit' ? 'administrative unit' : n <= 8 ? 'district' : 'settlement'; }
+    return n <= 4 ? 'half of the country' : n === 5 ? 'region' : n === 6 ? 'municipality' : isLand(code) ? (u && u.k || 'land') : u && u.k === 'administrative unit' ? 'administrative unit' : n <= 8 ? 'district' : 'settlement'; }
   function unitLayer(code) {
     const hit = unitByCode(code); if (!hit) return null;
     const rings = hit.u.r.map(ringLL);
@@ -436,7 +441,7 @@
         else { const own = pts.filter(q => q.kind === 'row' && q.code.startsWith(c + '.')); if (!own.length) return;
           p = [own.reduce((a, q) => a + q.lat, 0) / own.length, own.reduce((a, q) => a + q.lon, 0) / own.length]; }
         add(p, c, v.n, cls, hasLine ? 'A.U.' : 'A.U., no outline yet');
-      } else if (saved.has(c)) add(unitPoint(c), c, v.n, c.split('.').length === 8 ? 'nbh' : 'dis', v.k);
+      } else if (isLand(c)) { if (landOn && saved.has(c)) add(unitPoint(c), c, v.n, 'land', v.k); } else if (saved.has(c)) add(unitPoint(c), c, v.n, c.split('.').length === 8 ? 'nbh' : 'dis', v.k);
     });
   }
   // outline style per code; a hidden outline (A.U.s off, or replaced in the de facto view) also stops taking taps
@@ -682,6 +687,8 @@
   $('au-tree').addEventListener('toggle', buildAUTree);
   $('aut-all').onclick = () => { HID.clear(); applyHid(); status('every A.U. shown'); };
   $('lyr-set').checked = setOn;
+  $('lyr-land').checked = landOn;
+  $('lyr-land').onchange = e => { landOn = e.target.checked; try { localStorage.setItem('zss.trace.land', landOn ? '1' : '0'); } catch (er) {} restyleOwn(); drawUnitDots(); status(landOn ? 'lands and reserves shown' : 'lands and reserves hidden'); };
   $('lyr-set').onchange = e => { setOn = e.target.checked; try { localStorage.setItem('zss.trace.set', setOn ? '1' : '0'); } catch (er) {}
     restyleOwn(); status(setOn ? 'settlement outlines shown' : 'settlement outlines hidden — dots stay (Settlement dots hides them)'); };
   $('lyr-df').checked = dfOn;
