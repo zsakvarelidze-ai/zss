@@ -125,6 +125,7 @@
         <label class="lyr"><input type="checkbox" id="lyr-au" checked> <i style="background:#ff9f43"></i>A.U.s</label>
         <label class="lyr"><input type="checkbox" id="lyr-set" checked> <i style="background:#ff4fa3"></i>Settlement outlines</label>
         <label class="lyr"><input type="checkbox" id="lyr-mun-col"> <i style="background:linear-gradient(90deg,#ff4fa3,#4fd1ff,#34d399,#facc15);width:14px;height:9px"></i>Colour by municipality</label>
+        <label class="lyr"><input type="checkbox" id="lyr-au-col"> <i style="background:linear-gradient(90deg,#f87171,#facc15,#34d399,#60a5fa,#a78bfa);width:14px;height:9px"></i>Colour by A.U.</label>
         <label class="lyr"><input type="checkbox" id="lyr-df"> <i style="background:#ff5a5f"></i><span title="Abkhazia and South Ossetia as they are run now">De facto</span></label>
         <p class="hint" style="grid-column:1/-1;margin:2px 0 0">Colours by level: <b style="color:#ffd166">regions</b>, <b style="color:#fff">municipalities</b>, <b style="color:#7cc4ff">Tbilisi districts</b>, <b style="color:#ff9f43">administrative units (A.U.)</b>, <b style="color:#3de0c8">neighbourhoods</b>, <b style="color:#ff4fa3">settlements</b>. Each unit has a ■ square in its colour (regions from zoom 6, municipalities from 8, A.U.s from 10): tap it to select the unit and edit its line. A hollow ■ (from zoom 11) is an A.U. with no outline yet. An A.U. with an outline has its square in the middle of it; one without sits just above its centre village (the one with its name, else its first) — tap it, then Draw.</p>
       </div>
@@ -199,6 +200,7 @@
   // the kind still shows in the line: A.U./district dashed, neighbourhood dotted, settlement solid and filled
   const MUNPAL = ['#ff4fa3', '#4fd1ff', '#34d399', '#facc15', '#a78bfa', '#ff9f43', '#f87171', '#2dd4bf', '#60a5fa', '#f472b6', '#a3e635', '#fb923c'];
   let setOn = (() => { try { return localStorage.getItem('zss.trace.set') !== '0'; } catch (e) { return true; } })();   // settlement outlines shown (ZSS 2026-10-23)
+  let byAU = (() => { try { return localStorage.getItem('zss.trace.byau') === '1'; } catch (e) { return false; } })();   // colour by A.U. (ZSS 2026-10-26)
   let byMun = (() => { try { return localStorage.getItem('zss.trace.bymun') !== '0'; } catch (e) { return true; } })();
   // A.U.s hidden by hand (ZSS 2026-10-23): a municipality code hides all its A.U.s and their villages; an A.U. code hides it and its villages. Kept on this device.
   const HKEY = 'zss.trace.hidden'; let HID = (() => { try { return new Set(JSON.parse(localStorage.getItem(HKEY) || '[]')); } catch (e) { return new Set(); } })();
@@ -215,6 +217,11 @@
     const sib = BR[reg] && BR[reg].units ? BR[reg].units.length : 10, k = Math.max(0, (+s[5] || 1) - 1), t = sib > 1 ? Math.min(1, k / (sib - 1)) : .5;
     const h = Math.round((H - 35 + 70 * t + 360) % 360), l = k % 2 ? 50 : 72;
     return 'hsl(' + h + ',90%,' + l + '%)'; }
+  // colour by A.U.: each A.U. of a municipality its own colour, its villages and dots the same; hues spread round the wheel
+  function auColor(code) { const s = String(code).split('.'); if (s.length < 7) return null;
+    const k = (+s[6] || 0), m = (+s[5] || 0) * 7 + (+s[4] || 0) * 3, h = Math.round((m * 47 + k * 137.5) % 360), l = k % 2 ? 58 : 70;
+    return 'hsl(' + h + ',85%,' + l + '%)'; }
+  function colorOf(code) { return byAU ? auColor(code) : munColor(code); }
   function ownStyle(code) {
     if (DF && dfOn && (DFH.has(code) || DF.swap[code])) return HIDDEN;   // its de facto shape comes from data/df
     if (DFC.has(code)) return dfOn ? { color: DFCOL, weight: 2.2, opacity: .95, fillOpacity: 0, dashArray: '' } : HIDDEN;
@@ -222,7 +229,7 @@
     if (!auOn && n === 7 && isAU(code)) return HIDDEN;
     if (!setOn && n >= 9) return HIDDEN;
     if (isHid(code)) return HIDDEN;
-    if (byMun && n >= 7) { const c = munColor(code);
+    if ((byMun || byAU) && n >= 7) { const c = colorOf(code);
       if (n === 7) return { color: c, weight: 2, opacity: .95, fillColor: c, fillOpacity: .06, dashArray: '6 4' };
       if (n === 8) return { color: c, weight: 2, opacity: 1, fillColor: c, fillOpacity: .1, dashArray: '2 4' };
       return { color: c, weight: 1.6, opacity: .95, fillColor: c, fillOpacity: .22, dashArray: '' }; }
@@ -623,7 +630,7 @@
     if (moveOn && map.getZoom() >= 13) { drawPins(); return; }
     if (pts.length > 6000 && map.getZoom() < 11) { status(pts.length + ' points — zoom in to see them'); return; }
     const b = map.getBounds().pad(0.3);
-    for (const p of pts) { if (pts.length > DOTS_IN_VIEW && !b.contains([p.lat, p.lon])) continue; if (isHid(p.code)) continue; const m = L.circleMarker([p.lat, p.lon], { renderer: DOTR, pane: 'zdots', radius: p.fresh ? 5 : saved.has(p.code) ? 2 : p.kind === 'place' ? 3 : 4, color: p.fresh ? '#c3f73a' : (byMun && p.kind === 'row' && munColor(p.code)) ? munColor(p.code) : saved.has(p.code) ? '#ff4fa3' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: p.fresh ? 2.5 : saved.has(p.code) ? 1 : 1.5, fillOpacity: p.fresh ? .9 : saved.has(p.code) ? .8 : .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code + (p.fresh ? ' · new, not yet in the register' : ''), { className: 'lbl', direction: 'top' }); m.on('click', () => { if (dotMode || drawingNow()) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
+    for (const p of pts) { if (pts.length > DOTS_IN_VIEW && !b.contains([p.lat, p.lon])) continue; if (isHid(p.code)) continue; const m = L.circleMarker([p.lat, p.lon], { renderer: DOTR, pane: 'zdots', radius: p.fresh ? 5 : saved.has(p.code) ? 2 : p.kind === 'place' ? 3 : 4, color: p.fresh ? '#c3f73a' : ((byMun || byAU) && p.kind === 'row' && colorOf(p.code)) ? colorOf(p.code) : saved.has(p.code) ? '#ff4fa3' : p.kind === 'place' ? '#f0b23a' : '#35f0a0', weight: p.fresh ? 2.5 : saved.has(p.code) ? 1 : 1.5, fillOpacity: p.fresh ? .9 : saved.has(p.code) ? .8 : .5, pmIgnore: true }).addTo(points); m.bindTooltip(p.name + ' · ' + p.code + (p.fresh ? ' · new, not yet in the register' : ''), { className: 'lbl', direction: 'top' }); m.on('click', () => { if (dotMode || drawingNow()) return; if (work) { status('an outline is open — Save or Discard it before picking another place'); return; } selectCode(p.code, p.name, p.lat, p.lon); map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15)); }); }
   }
   function renderList() {
     const q = $('q').value.trim().toLowerCase(); const box = $('list'); box.innerHTML = '';
@@ -638,6 +645,9 @@
   ['lyr-reg', 'lyr-mun', 'lyr-dis', 'lyr-out', 'lyr-dot', 'lyr-nam'].forEach(id => $(id).onchange = syncLayers);
   $('lyr-udot').onchange = drawUnitDots;
   $('lyr-mun-col').checked = byMun;
+  $('lyr-au-col').checked = byAU;
+  $('lyr-au-col').onchange = e => { byAU = e.target.checked; try { localStorage.setItem('zss.trace.byau', byAU ? '1' : '0'); } catch (er) {}
+    restyleOwn(); drawPoints(); status(byAU ? 'coloured by A.U. — each A.U. with its villages and dots in one colour' : 'colour by A.U. off'); };
   $('lyr-au').checked = auOn;
   $('lyr-au').onchange = e => { auOn = e.target.checked; try { localStorage.setItem('zss.trace.au', auOn ? '1' : '0'); } catch (er) {}
     restyleOwn(); drawUnitDots(); status(auOn ? 'A.U.s shown' : 'A.U.s hidden — outlines and squares; settlements stay'); };
