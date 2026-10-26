@@ -218,9 +218,12 @@
     const h = Math.round((H - 35 + 70 * t + 360) % 360), l = k % 2 ? 50 : 72;
     return 'hsl(' + h + ',90%,' + l + '%)'; }
   // colour by A.U.: each A.U. of a municipality its own colour, its villages and dots the same; hues spread round the wheel
-  function auColor(code) { const s = String(code).split('.'); if (s.length < 7) return null;
-    const k = (+s[6] || 0), m = (+s[5] || 0) * 7 + (+s[4] || 0) * 3, h = Math.round((m * 47 + k * 137.5) % 360), l = k % 2 ? 58 : 70;
-    return 'hsl(' + h + ',85%,' + l + '%)'; }
+  // the colour number comes from data/aucol/<cc>.js, worked out so that neighbouring A.U.s differ (ZSS 2026-10-26)
+  const AUPAL = ['#ff4d4d', '#3cb44b', '#ffe119', '#4c7dff', '#ff9a3c', '#b05cff', '#46f0f0', '#ff4fd8', '#bcf60c', '#ffb3b3', '#2ec4b6', '#c9a7ff'];
+  let AUCOL = {};
+  function auColor(code) { const s = String(code).split('.'); if (s.length < 7) return null; const a = s.slice(0, 7).join('.');
+    if (a in AUCOL) return AUPAL[AUCOL[a] % AUPAL.length];
+    const k = (+s[6] || 0), m = (+s[5] || 0) * 7 + (+s[4] || 0) * 3; return 'hsl(' + Math.round((m * 47 + k * 137.5) % 360) + ',85%,' + (k % 2 ? 58 : 70) + '%)'; }
   function colorOf(code) { return byAU ? auColor(code) : munColor(code); }
   function ownStyle(code) {
     if (DF && dfOn && (DFH.has(code) || DF.swap[code])) return HIDDEN;   // its de facto shape comes from data/df
@@ -602,6 +605,7 @@
     defacto: d => { DF = d; DFH = new Set(d.hide || []); DFC = new Set((d.units || []).map(u => u.c)); drawAdmin(); restyleOwn(); },
     squares: d => { SQS = new Map((d.sq || []).map(x => [x[0], [x[1], x[2]]]));
       Object.keys(PSQ).forEach(c => { const q = PSQ[c], s2 = SQS.get(c); if (q.saved && s2 && Math.abs(s2[0] - q.lat) < 1e-5 && Math.abs(s2[1] - q.lon) < 1e-5) delete PSQ[c]; }); putSq(); sqUI(); drawUnitDots(); },
+    aucol: d => { AUCOL = d.c || {}; if (byAU) { restyleOwn(); drawPoints(); } },
     pts: d => {
       // a dot kept on this device stops being lime once the published register has it at the same place (ZSS 2026-10-23: moved dots stayed yellow)
       try { const site = new Map((d.pts || []).map(p => [p[0], p])), P = pendDots(); let gone = 0;
@@ -621,7 +625,7 @@
     if (!/^\d+\.\d+\.\d+$/.test(cc)) return;
     $('back-country').href = 'country.html?code=' + cc; pts = []; placesLoaded = false; fitted = false; points.clearLayers();
     Object.keys(BR).forEach(k => delete BR[k]); Object.keys(brWant).forEach(k => delete brWant[k]); [munGrp, disGrp, regGrp, namGrp].forEach(g => g.clearLayers()); DF = null; DFH = new Set(); DFC = new Set(); loadBranch(cc); loadScript('data/own/' + cc + '.js' + VB, () => {}); loadScript('data/df/' + cc + '.js' + VB, () => {});
-    loadScript('data/units/' + cc + '.js' + VB, () => {}); loadScript('data/sq/' + cc + '.js' + VB, () => {});
+    loadScript('data/units/' + cc + '.js' + VB, () => {}); loadScript('data/sq/' + cc + '.js' + VB, () => {}); loadScript('data/aucol/' + cc + '.js' + VB, () => {});
     loadScript('data/pts/' + cc + '.js' + VB, () => status('no register points for ' + cc + ' — try GeoNames places, or type a code and draw'));
   }
   $('places-btn').onclick = () => { const cc = $('cc').value.trim(); if (!cc || placesLoaded) return; loadScript('data/places/' + cc + '.js' + VB, () => status('no places file for ' + cc + ' (countries over 30,000 places are not on the site)')); };
