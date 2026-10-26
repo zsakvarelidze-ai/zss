@@ -455,6 +455,10 @@
     try { const P = Object.assign({}, pendAll()), gone = [];
       d.units.forEach(u => { const k = P[u.c]; if (!k) return; const at = Date.parse(k.kept_at || '');
         if ((at && u.t && u.t * 1000 >= at - 120000) || (!at && siteHasSame(u.c, k))) { delete P[u.c]; gone.push(u.c); } });
+      // a kept copy under a code the register refiled: the site has the same shape and name under another code (ZSS 2026-10-26: Zemo Bolkvi 2.0.6)
+      Object.keys(P).forEach(c => { if (SITEC.has(c)) return; const f = P[c].features ? P[c].features[0] : P[c], nm = ((f || {}).properties || {}).name || '';
+        const same = d.units.find(u => u.c !== c && sameName(String(u.n).replace(/ A\.U\.?$/, ''), nm.replace(/ A\.U\.?$/, '')) && siteHasSame(u.c, P[c]));
+        if (same) { delete P[c]; gone.push(c); } });
       if (gone.length) { PENDC = null; if (Object.keys(P).length) localStorage.setItem(PKEY, JSON.stringify(P)); else localStorage.removeItem(PKEY);
         gone.forEach(c => saved.delete(c)); drawPending(); status(gone.length + ' outline' + (gone.length > 1 ? 's' : '') + ' kept on this device are on the site now — the copies were dropped'); } } catch (e) {}
     if (dirHandle || neighbours.getLayers().length) return;
@@ -518,9 +522,13 @@
       lyr.bindTooltip(((ft.properties || {}).name || code) + ' · kept on this device', { className: 'lbl', sticky: true });
       lyr.on('click', () => { if (!work && !dotMode && !moveOn && !drawingNow()) { selectCode(code, (ft.properties || {}).name || ''); status(code + ' is kept on this device — Edit to change it, Save to share it again'); } }); }
     const el = $('pend'); if (!el) return;
-    const kept = [codes.length ? codes.length + ' outline' + (codes.length > 1 ? 's' : '') + ': ' + codes.map(c => esc(c) + ' <a href="#" class="pend-x" data-c="' + esc(c) + '" title="drop this copy from this device">×</a>').join(', ') : '', dcodes.length ? dcodes.length + ' dot' + (dcodes.length > 1 ? 's' : '') + ': ' + dcodes.map(esc).join(', ') : ''].filter(Boolean).join('; ');
+    const kept = [codes.length ? codes.length + ' outline' + (codes.length > 1 ? 's' : '') + ': ' + codes.map(c => esc(c) + ' <a href="#" class="pend-x" data-c="' + esc(c) + '" title="drop this copy from this device">×</a>').join(', ') : '', dcodes.length ? dcodes.length + ' dot' + (dcodes.length > 1 ? 's' : '') + ': ' + dcodes.map(c => esc(c) + ' <a href="#" class="pend-xd" data-c="' + esc(c) + '" title="drop this dot from this device">×</a>').join(', ') : ''].filter(Boolean).join('; ');
     el.innerHTML = kept ? 'Kept on this device (lime green) — ' + kept + '. Once they are in the folder, <a href="#" id="pend-clear">forget them here</a>.' : '';
     // × beside a code drops just that copy (ZSS 2026-10-25: a copy saved under a code the register refiled stays lime for ever otherwise)
+    el.querySelectorAll('.pend-xd').forEach(x => x.onclick = e => { e.preventDefault(); const k = x.dataset.c;
+      if (!x.dataset.sure) { x.dataset.sure = '1'; x.textContent = '× tap again to drop dot ' + k; return; }
+      const D = pendDots(); delete D[k]; try { if (Object.keys(D).length) localStorage.setItem(DKEY, JSON.stringify(D)); else localStorage.removeItem(DKEY); } catch (er) {}
+      pts = pts.filter(q => !(q.fresh && q.code === k)); drawPending(); mergeDots(); drawPoints(); renderList(); status('dot ' + k + ' dropped from this device'); });
     el.querySelectorAll('.pend-x').forEach(x => x.onclick = e => { e.preventDefault(); const k = x.dataset.c;
       if (!x.dataset.sure) { x.dataset.sure = '1'; x.textContent = '× tap again to drop ' + k; return; }
       const P = Object.assign({}, pendAll()); delete P[k]; PENDC = null; try { if (Object.keys(P).length) localStorage.setItem(PKEY, JSON.stringify(P)); else localStorage.removeItem(PKEY); } catch (er) {}
@@ -590,8 +598,10 @@
     pts: d => {
       // a dot kept on this device stops being lime once the published register has it at the same place (ZSS 2026-10-23: moved dots stayed yellow)
       try { const site = new Map((d.pts || []).map(p => [p[0], p])), P = pendDots(); let gone = 0;
-        Object.keys(P).forEach(c => { const q = site.get(c); if (q && Math.abs(q[2] - P[c].lat) < 2e-5 && Math.abs(q[3] - P[c].lon) < 2e-5) { delete P[c]; gone++; } });
-        if (gone) { if (Object.keys(P).length) localStorage.setItem(DKEY, JSON.stringify(P)); else localStorage.removeItem(DKEY); } } catch (e) {}
+        Object.keys(P).forEach(c => { const q = site.get(c); if (q && Math.abs(q[2] - P[c].lat) < 2e-5 && Math.abs(q[3] - P[c].lon) < 2e-5) { delete P[c]; gone++; return; }
+          // the register filed it under another code: same name, within 200 m (ZSS 2026-10-26: Zemo Bolkvi showed twice)
+          if (!q && (d.pts || []).some(r => r[0] !== c && sameName(r[1], P[c].name) && Math.hypot((r[2] - P[c].lat) * 111, (r[3] - P[c].lon) * 83) < 0.2)) { delete P[c]; gone++; } });
+        if (gone) { if (Object.keys(P).length) localStorage.setItem(DKEY, JSON.stringify(P)); else localStorage.removeItem(DKEY); setTimeout(drawPending, 0); } } catch (e) {}
       NODOT = d.nodot || [];
       pts = pts.filter(p => p.kind === 'place').concat((d.pts || []).map(p => ({ code: p[0], name: p[1], lat: p[2], lon: p[3], kind: 'row' }))); mergeFolderPts(); after(d.code + ': ' + pts.length + ' points'); },
     units: d => { UN.clear(); UNR.clear(); (d.units || []).forEach(u => u[3] ? UNR.add(u[0]) : UN.set(u[0], { n: u[1], k: u[2] })); fillUnits(); restyleOwn(); drawUnitDots(); buildAUTree(); },
