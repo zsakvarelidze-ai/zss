@@ -611,6 +611,23 @@
     squares: d => { SQS = new Map((d.sq || []).map(x => [x[0], [x[1], x[2]]]));
       Object.keys(PSQ).forEach(c => { const q = PSQ[c], s2 = SQS.get(c); if (q.saved && s2 && Math.abs(s2[0] - q.lat) < 1e-5 && Math.abs(s2[1] - q.lon) < 1e-5) delete PSQ[c]; }); putSq(); sqUI(); drawUnitDots(); },
     aucol: d => { AUCOL = d.c || {}; if (byAU) { restyleOwn(); drawPoints(); } },
+    // saves the register set aside (wrong code, older copy, marker triangle, a dot's earlier place): a copy kept on this device
+    // that is exactly one of them is dropped (ZSS 2026-10-31: 'make it clear them automatically'); a newer save that differs stays
+    retired: d => { try {
+      const bx = f => { const ft = f && (f.features ? f.features[0] : f), g = ft && ft.geometry; if (!g) return null;
+        const rs = (g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []).flatMap(q => q); if (!rs.length) return null;
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, n = 0;
+        rs.forEach(r => { const c = r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]; n += r.length - (c ? 1 : 0);
+          r.forEach(([x, y]) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }); });
+        return [x0, y0, x1, y1, n]; };
+      const P = Object.assign({}, pendAll()), D = pendDots(), go = [], gd = [];
+      Object.keys(P).forEach(c => { const b = bx(P[c]); if (b && (d.o || []).some(o => o[0] === c && o[5] === b[4] && [1, 2, 3, 4].every(i => Math.abs(o[i] - b[i - 1]) < 2e-6))) { delete P[c]; go.push(c); } });
+      Object.keys(D).forEach(c => { const q = D[c]; if (q && (d.d || []).some(x => x[0] === c && Math.abs(x[1] - q.lat) < 2e-5 && Math.abs(x[2] - q.lon) < 2e-5)) { delete D[c]; gd.push(c); } });
+      if (go.length) { PENDC = null; if (Object.keys(P).length) localStorage.setItem(PKEY, JSON.stringify(P)); else localStorage.removeItem(PKEY); go.forEach(c => saved.delete(c)); }
+      if (gd.length) { if (Object.keys(D).length) localStorage.setItem(DKEY, JSON.stringify(D)); else localStorage.removeItem(DKEY); }
+      if (go.length || gd.length) { setTimeout(() => { drawPending(); drawPoints(); }, 0);
+        status((go.length + gd.length) + ' cop' + (go.length + gd.length > 1 ? 'ies' : 'y') + ' kept on this device the register had set aside — dropped: ' + go.concat(gd).join(', ')); }
+    } catch (e) {} },
     pts: d => {
       // a dot kept on this device stops being lime once the published register has it at the same place (ZSS 2026-10-23: moved dots stayed yellow)
       try { const site = new Map((d.pts || []).map(p => [p[0], p])), P = pendDots(); let gone = 0;
@@ -630,7 +647,7 @@
     if (!/^\d+\.\d+\.\d+$/.test(cc)) return;
     $('back-country').href = 'country.html?code=' + cc; pts = []; placesLoaded = false; fitted = false; points.clearLayers();
     Object.keys(BR).forEach(k => delete BR[k]); Object.keys(brWant).forEach(k => delete brWant[k]); [munGrp, disGrp, regGrp, namGrp].forEach(g => g.clearLayers()); DF = null; DFH = new Set(); DFC = new Set(); loadBranch(cc); loadScript('data/own/' + cc + '.js' + VB, () => {}); loadScript('data/df/' + cc + '.js' + VB, () => {});
-    loadScript('data/units/' + cc + '.js' + VB, () => {}); loadScript('data/sq/' + cc + '.js' + VB, () => {}); loadScript('data/aucol/' + cc + '.js' + VB, () => {});
+    loadScript('data/units/' + cc + '.js' + VB, () => {}); loadScript('data/sq/' + cc + '.js' + VB, () => {}); loadScript('data/aucol/' + cc + '.js' + VB, () => {}); loadScript('data/retired/' + cc + '.js' + VB, () => {});
     loadScript('data/pts/' + cc + '.js' + VB, () => status('no register points for ' + cc + ' — try GeoNames places, or type a code and draw'));
   }
   $('places-btn').onclick = () => { const cc = $('cc').value.trim(); if (!cc || placesLoaded) return; loadScript('data/places/' + cc + '.js' + VB, () => status('no places file for ' + cc + ' (countries over 30,000 places are not on the site)')); };
