@@ -633,7 +633,10 @@
       try { const site = new Map((d.pts || []).map(p => [p[0], p])), P = pendDots(); let gone = 0;
         Object.keys(P).forEach(c => { const q = site.get(c); if (q && Math.abs(q[2] - P[c].lat) < 2e-5 && Math.abs(q[3] - P[c].lon) < 2e-5) { delete P[c]; gone++; return; }
           // the register filed it under another code: same name, within 200 m (ZSS 2026-10-26: Zemo Bolkvi showed twice)
-          if (!q && (d.pts || []).some(r => r[0] !== c && sameName(r[1], P[c].name) && Math.hypot((r[2] - P[c].lat) * 111, (r[3] - P[c].lon) * 83) < 0.2)) { delete P[c]; gone++; } });
+          if (!q && (d.pts || []).some(r => r[0] !== c && sameName(r[1], P[c].name) && Math.hypot((r[2] - P[c].lat) * 111, (r[3] - P[c].lon) * 83) < 0.2)) { delete P[c]; gone++; }
+          // a shorter spelling of a site dot within 150 m (first two words begin alike), saved under a wrong or new code (ZSS 2026-10-31: 'Akhalshenis Meurneoba' beside Akhalshenis Meurneobis Dasakhleba)
+          const w1 = x => { const w = String(x || '').trim().toLowerCase().split(/\s+/); return w.length < 2 ? '#' + Math.random() : w[0].slice(0, 6) + ' ' + w[1].slice(0, 6); }, km = r => Math.hypot((r[2] - P[c].lat) * 111, (r[3] - P[c].lon) * 83);
+          if (P[c] && (!q || (km(q) > 0.2 && !sameName(q[1], P[c].name))) && (d.pts || []).some(r => r[0] !== c && w1(r[1]) === w1(P[c].name) && km(r) < 0.15)) { delete P[c]; gone++; } });
         if (gone) { if (Object.keys(P).length) localStorage.setItem(DKEY, JSON.stringify(P)); else localStorage.removeItem(DKEY); setTimeout(drawPending, 0); } } catch (e) {}
       NODOT = d.nodot || [];
       pts = pts.filter(p => p.kind === 'place').concat((d.pts || []).map(p => ({ code: p[0], name: p[1], lat: p[2], lon: p[3], kind: 'row' }))); mergeFolderPts(); after(d.code + ': ' + pts.length + ' points'); },
