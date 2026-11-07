@@ -226,6 +226,7 @@
   const AUPAL = ['#ff4d4d', '#3cb44b', '#ffe119', '#4c7dff', '#ff9a3c', '#b05cff', '#46f0f0', '#ff4fd8', '#bcf60c', '#ffb3b3', '#2ec4b6', '#c9a7ff'];
   let AUCOL = {};
   function auColor(code) { const s = String(code).split('.'); if (s.length < 7) return null; const a = s.slice(0, 7).join('.');
+    if (code in AUCOL && s.length > 7) return AUPAL[AUCOL[code] % AUPAL.length];   // a settlement shown in another A.U.'s colour (colour_as.csv; ZSS 2026-11-07: Qvana)
     if (a in AUCOL) return AUPAL[AUCOL[a] % AUPAL.length];
     const k = (+s[6] || 0), m = (+s[5] || 0) * 7 + (+s[4] || 0) * 3; return 'hsl(' + Math.round((m * 47 + k * 137.5) % 360) + ',85%,' + (k % 2 ? 58 : 70) + '%)'; }
   function colorOf(code) { return byAU ? auColor(code) : munColor(code); }
