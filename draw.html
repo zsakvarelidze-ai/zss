@@ -168,6 +168,7 @@
     <div class="card">
       <h2>Basemap</h2>
       <div class="row"><button data-base="sat" aria-pressed="true">Satellite</button><button data-base="osm" aria-pressed="false">OpenStreetMap</button><button data-base="topo" aria-pressed="false">Topo</button></div>
+      <div class="row"><button data-base="s2" aria-pressed="false" title="Sentinel-2 cloudless 2016 by EOX, CC BY 4.0: open, trace freely; 10 m pixels">Sentinel-2 2016 (open)</button><button data-base="ofm" aria-pressed="false" title="OpenFreeMap Liberty: OpenStreetMap data (ODbL), flat; building outlines at high zoom">OpenFreeMap</button><button data-base="s2new" aria-pressed="false" title="Sentinel-2 cloudless 2024 by EOX, CC BY-NC-SA 4.0: non-commercial only; 10 m pixels">Sentinel-2 2024 (non-commercial)</button></div>
       <label><input type="checkbox" id="labels" checked> place labels over imagery</label>
     </div>
   </aside>
@@ -252,10 +253,30 @@
     sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' }),
     osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }),
     topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenTopoMap (CC-BY-SA)' }),
+    // Sentinel-2 cloudless mosaics by EOX (ZSS 2026-11-09): 2016 is CC BY 4.0 (open to trace and publish); later years are CC BY-NC-SA 4.0 (non-commercial)
+    s2: L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg', { maxZoom: 19, maxNativeZoom: 15, attribution: 'Sentinel-2 cloudless 2016 by <a href="https://s2maps.eu">EOX IT Services GmbH</a> (Contains modified Copernicus Sentinel data 2016), CC BY 4.0' }),
+    s2new: L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{z}/{y}/{x}.jpg', { maxZoom: 19, maxNativeZoom: 15, attribution: 'Sentinel-2 cloudless 2024 by <a href="https://s2maps.eu">EOX IT Services GmbH</a> (Contains modified Copernicus Sentinel data 2024), CC BY-NC-SA 4.0' }),
   };
   const labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, opacity: .9 });
   let baseName = 'sat'; bases.sat.addTo(map); labels.addTo(map);
-  document.querySelectorAll('[data-base]').forEach(b => b.onclick = () => { map.removeLayer(bases[baseName]); baseName = b.dataset.base; bases[baseName].addTo(map); bases[baseName].bringToBack(); document.querySelectorAll('[data-base]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); });
+  // the imagery a save was made over, written into each outline and dot (licences differ: ZSS 2026-11-09)
+  const BASE_NAMES = { sat: 'Esri World Imagery', osm: 'OpenStreetMap', topo: 'OpenTopoMap', ofm: 'OpenFreeMap Liberty (OpenStreetMap data, ODbL)', s2: 'Sentinel-2 cloudless 2016 (EOX, CC BY 4.0)', s2new: 'Sentinel-2 cloudless 2024 (EOX, CC BY-NC-SA 4.0)' };
+  const baseLabel = () => BASE_NAMES[baseName] || baseName;
+  // OpenFreeMap Liberty is a vector style: MapLibre GL and its Leaflet bridge load only when it is first chosen
+  function ofmReady(done) {
+    if (window.L && L.maplibreGL) return done();
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css'; document.head.appendChild(css);
+    loadScript('https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js', () => status('OpenFreeMap did not load (unpkg.com unreachable)'));
+    const wait = setInterval(() => { if (window.maplibregl) { clearInterval(wait); loadScript('https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js', () => status('OpenFreeMap did not load'));
+      const w2 = setInterval(() => { if (L.maplibreGL) { clearInterval(w2); done(); } }, 100); } }, 100);
+  }
+  function setBase(name, btn) {
+    const go = () => { map.removeLayer(bases[baseName]); baseName = name; bases[baseName].addTo(map); if (bases[baseName].bringToBack) bases[baseName].bringToBack();
+      document.querySelectorAll('[data-base]').forEach(x => x.setAttribute('aria-pressed', String(x === btn))); };
+    if (name === 'ofm' && !bases.ofm) return ofmReady(() => { bases.ofm = L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/liberty', attribution: '<a href="https://openfreemap.org">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>' }); go(); });
+    go();
+  }
+  document.querySelectorAll('[data-base]').forEach(b => b.onclick = () => setBase(b.dataset.base, b));
   $('labels').onchange = e => e.target.checked ? labels.addTo(map) : map.removeLayer(labels);
   const neighbours = L.featureGroup().addTo(map);      // outlines already saved
   const points = L.layerGroup().addTo(map);            // settlement points of the country
@@ -811,7 +832,7 @@
     const gj = work.toGeoJSON(); if (work.pm) work.pm.disable(); gj.geometry = splitRings(gj.geometry);
     const ring = gj.geometry.type === 'MultiPolygon' ? gj.geometry.coordinates[0][0] : gj.geometry.coordinates[0]; if (!ring || ring.length < 4) { status('the outline needs at least three vertices'); return null; }
     gj.properties = { code, name: $('name').value.trim(), level: code.split('.').length, licence: 'own', status: 'asserted', kind: kindOf(code).replace('half of the country', 'region') + ' outline',
-      source: ($('basis').value === 'napr' ? 'ZSS, traced by hand following the NAPR settlement-boundary layer (maps.gov.ge, working version) over ' : $('basis').value === 'other' ? 'ZSS, traced by hand from another map over ' : 'ZSS, traced by hand over ') + (baseName === 'sat' ? 'Esri World Imagery' : baseName === 'osm' ? 'OpenStreetMap' : 'OpenTopoMap'),
+      source: ($('basis').value === 'napr' ? 'ZSS, traced by hand following the NAPR settlement-boundary layer (maps.gov.ge, working version) over ' : $('basis').value === 'other' ? 'ZSS, traced by hand from another map over ' : 'ZSS, traced by hand over ') + baseLabel(),
       basis: $('basis').value,
       traced_at: new Date().toISOString().slice(0, 10), zoom: map.getZoom(), by: ($('who').value || '').toUpperCase() || null, note: $('note').value.trim() || null,
       vertices: ring.length - 1, replaces: saved.has(code) ? (saved.get(code).properties || {}).traced_at || true : null };
@@ -1016,7 +1037,7 @@
     const prev = PSQ[code], f = L.latLng(from);
     PSQ[code] = { code, name, lat: +ll.lat.toFixed(6), lon: +ll.lng.toFixed(6), old: prev ? prev.old : { lat: +f.lat.toFixed(6), lon: +f.lng.toFixed(6) },
       placed_at: new Date().toISOString().slice(0, 10), by: ($('who').value || '').toUpperCase() || null, zoom: map.getZoom(),
-      over: baseName === 'sat' ? 'Esri World Imagery' : baseName === 'osm' ? 'OpenStreetMap' : 'OpenTopoMap', saved: false };
+      over: baseLabel(), saved: false };
     putSq(); sqUI(); drawUnitDots(); status(name + ' square moved — move more, then Save squares');
   }
   async function saveSquares() {
@@ -1055,7 +1076,7 @@
         do { k++; c2 = pre + '.' + k; } while (known().has(c2) || await folderName(c2));
         $('dot-code').value = c2; draft.code = c2; codeTouched = true; status(code + ' is already ' + held + ' in your folder — the code is now ' + c2 + '; press Save dot again'); return; } }
     const d = { type: 'zss-dot', action: draft.action, code, name, kind, level: code.split('.').length, lat: +draft.lat.toFixed(6), lon: +draft.lon.toFixed(6), old: draft.old,
-      placed_at: new Date().toISOString().slice(0, 10), by: ($('who').value || '').toUpperCase() || null, zoom: map.getZoom(), over: baseName === 'sat' ? 'Esri World Imagery' : baseName === 'osm' ? 'OpenStreetMap' : 'OpenTopoMap' };
+      placed_at: new Date().toISOString().slice(0, 10), by: ($('who').value || '').toUpperCase() || null, zoom: map.getZoom(), over: baseLabel() };
     const fname = code + '.dot.json', text = JSON.stringify(d, null, 1);
     if (dirHandle) {
       try { const own = await ownDir(true); const fh = await own.getFileHandle(fname, { create: true }); const w = await fh.createWritable(); await w.write(text); await w.close(); dotFiles.set(code, d); status('saved geometry/own/' + fname); }
