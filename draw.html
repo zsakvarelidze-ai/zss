@@ -161,7 +161,7 @@
       <label>Your initials <input id="who" class="mono" maxlength="6" placeholder="ZS"></label>
       <label>Traced from <select id="basis"><option value="imagery">the imagery (built-up edge)</option><option value="napr">NAPR's settlement-boundary layer (maps.gov.ge, working version), followed on the imagery</option><option value="other">another map (say which in the note)</option></select></label>
       <label>Note <textarea id="note" placeholder="what the edge follows — built-up limit, fence line, river…"></textarea></label>
-      <div class="row"><button id="draw" class="primary">Draw</button><button id="edit">Edit</button><button id="clear">Discard</button><button id="undisc" hidden title="bring back the outline you last discarded">Undo discard</button></div>
+      <div class="row"><button id="draw" class="primary">Draw</button><button id="tapdraft" aria-pressed="false" title="tap inside a village: a draft outline grows from the built-up hint; then Edit and Save">Draft from built-up</button><button id="edit">Edit</button><button id="clear">Discard</button><button id="undisc" hidden title="bring back the outline you last discarded">Undo discard</button></div>
       <div class="row"><button id="save" class="primary" disabled>Save to folder</button><button id="dl" disabled>Download .geojson</button></div>
       <p class="hint">Click to add vertices, click the first vertex to close. Vertices snap to a neighbour's edge so two outlines never overlap or leave a sliver. Saved with the imagery name, zoom, date and initials; licence <span class="mono">own</span>, status asserted.</p>
     </div>
@@ -170,6 +170,13 @@
       <div class="row"><button data-base="sat" aria-pressed="true">Satellite</button><button data-base="osm" aria-pressed="false">OpenStreetMap</button><button data-base="topo" aria-pressed="false">Topo</button></div>
       <div class="row"><button data-base="s2" aria-pressed="false" title="Sentinel-2 cloudless 2016 by EOX, CC BY 4.0: open, trace freely; 10 m pixels">Sentinel-2 2016 (open)</button><button data-base="ofm" aria-pressed="false" title="OpenFreeMap Liberty: OpenStreetMap data (ODbL), flat; building outlines at high zoom">OpenFreeMap</button><button data-base="s2new" aria-pressed="false" title="Sentinel-2 cloudless 2024 by EOX, CC BY-NC-SA 4.0: non-commercial only; 10 m pixels">Sentinel-2 2024 (non-commercial)</button></div>
       <label><input type="checkbox" id="labels" checked> place labels over imagery</label>
+      <label title="orange = built-up land in ESA WorldCover 2021 (10 m, CC BY 4.0); houses under trees are often missed"><input type="checkbox" id="wc-on"> built-up hint (ESA WorldCover 2021)</label>
+      <label title="trace and place dots on Sentinel-2 2016 only, so everything saved is clean to publish"><input type="checkbox" id="clean-on"> <span><b>Clean mode</b>: Sentinel-2 2016 only</span></label>
+      <div id="clean-box" hidden>
+        <div class="row"><button id="clean-next" title="the next outline still traced over Esri or Google: its old line is hidden while you draw">Next outline to redo</button><button id="clean-dot" title="the next dot not from GeoNames: check it on Sentinel-2 2016">Next dot to check</button></div>
+        <div class="row" id="clean-dotrow" hidden><button id="clean-dotok" class="primary">Dot is right</button><span class="hint">or drag it (Move dots), then Save</span></div>
+        <p class="hint" id="clean-n"></p>
+      </div>
     </div>
   </aside>
 </main>
@@ -232,6 +239,7 @@
     const k = (+s[6] || 0), m = (+s[5] || 0) * 7 + (+s[4] || 0) * 3; return 'hsl(' + Math.round((m * 47 + k * 137.5) % 360) + ',85%,' + (k % 2 ? 58 : 70) + '%)'; }
   function colorOf(code) { return byAU ? auColor(code) : munColor(code); }
   function ownStyle(code) {
+    if (CLEAN && code === ($('code').value || '').trim()) return HIDDEN;   // clean mode: the old (Esri) line of the outline being redone stays out of sight
     if (DF && dfOn && (DFH.has(code) || DF.swap[code])) return HIDDEN;   // its de facto shape comes from data/df
     if (DFC.has(code)) return dfOn ? { color: DFCOL, weight: 2.2, opacity: .95, fillOpacity: 0, dashArray: '' } : HIDDEN;
     const n = String(code).split('.').length;
@@ -744,7 +752,7 @@
   // ---- selection and the working polygon
   let sel = null;
   function markSel(lat, lon) { selMark.clearLayers(); if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) return; L.circleMarker([lat, lon], { radius: 9, color: '#ffffff', weight: 2.5, fill: false, pmIgnore: true, interactive: false }).addTo(selMark); L.circleMarker([lat, lon], { radius: 4, color: '#f0b23a', weight: 1.5, fillOpacity: .9, pmIgnore: true, interactive: false }).addTo(selMark); }
-  function selectCode(code, name, lat, lon) { sel = { code, name }; markSel(lat, lon); $('code').value = code; $('name').value = name || ''; $('sel').textContent = code + (name ? ' · ' + name : ''); }
+  function selectCode(code, name, lat, lon) { sel = { code, name }; markSel(lat, lon); $('code').value = code; $('name').value = name || ''; $('sel').textContent = code + (name ? ' · ' + name : ''); if (CLEAN) restyleOwn(); }
   function setWork(layer) {
     if (work && work !== layer) map.removeLayer(work);
     work = layer; $('save').disabled = !(work && (dirHandle || NOFS)); $('dl').disabled = !work;
@@ -832,8 +840,8 @@
     const gj = work.toGeoJSON(); if (work.pm) work.pm.disable(); gj.geometry = splitRings(gj.geometry);
     const ring = gj.geometry.type === 'MultiPolygon' ? gj.geometry.coordinates[0][0] : gj.geometry.coordinates[0]; if (!ring || ring.length < 4) { status('the outline needs at least three vertices'); return null; }
     gj.properties = { code, name: $('name').value.trim(), level: code.split('.').length, licence: 'own', status: 'asserted', kind: kindOf(code).replace('half of the country', 'region') + ' outline',
-      source: ($('basis').value === 'napr' ? 'ZSS, traced by hand following the NAPR settlement-boundary layer (maps.gov.ge, working version) over ' : $('basis').value === 'other' ? 'ZSS, traced by hand from another map over ' : 'ZSS, traced by hand over ') + baseLabel(),
-      basis: $('basis').value,
+      source: (work._zdraft ? 'ZSS, drafted from the ESA WorldCover 2021 built-up layer (CC BY 4.0), checked and adjusted by hand over ' : $('basis').value === 'napr' ? 'ZSS, traced by hand following the NAPR settlement-boundary layer (maps.gov.ge, working version) over ' : $('basis').value === 'other' ? 'ZSS, traced by hand from another map over ' : 'ZSS, traced by hand over ') + baseLabel(),
+      basis: $('basis').value, draft: work._zdraft ? 'ESA WorldCover 2021 (CC BY 4.0)' : null, clean_mode: CLEAN || null,
       traced_at: new Date().toISOString().slice(0, 10), zoom: map.getZoom(), by: ($('who').value || '').toUpperCase() || null, note: $('note').value.trim() || null,
       vertices: ring.length - 1, replaces: saved.has(code) ? (saved.get(code).properties || {}).traced_at || true : null };
     return { type: 'FeatureCollection', features: [gj] };
@@ -931,7 +939,105 @@
     dropWork();   // the 3-second copy may have run while the share sheet was open
     drawPending(); drawPoints(); UPT.clear(); ACC.clear(); drawUnitDots();
   }
-  function trySave() { const fc = feature(); if (!fc) return; guarded(fc, () => NOFS ? shareFC(fc) : writeFC(fc), trySave); }
+  // ---- clean tracing (ZSS 2026-11-12): built-up hint from ESA WorldCover 2021 (CC BY 4.0), tap-to-draft, clean mode on Sentinel-2 2016
+  var CLEAN = false, CLEANQ = null, cleanI = 0, cleanD = 0, cleanDot = null;
+  const WCB = new Map(), WCW = new Map();   // bundle "x_y" (z10) -> { "z/x/y": base64 png }
+  window.ZSS.wc = d => { WCB.set(d.k, d.t); (WCW.get(d.k) || []).forEach(f => f(d.t)); WCW.delete(d.k); };
+  function wcBundle(k, cb) { if (WCB.has(k)) return cb(WCB.get(k)); if (WCW.has(k)) return void WCW.get(k).push(cb); WCW.set(k, [cb]);
+    loadScript('data/wc/b/' + k + '.js' + VB, () => { WCB.set(k, {}); (WCW.get(k) || []).forEach(f => f({})); WCW.delete(k); }); }
+  function wcTile(z, x, y, cb) { const s = 2 ** (z - 10); wcBundle(Math.floor(x / s) + '_' + Math.floor(y / s), t => cb(t[z + '/' + x + '/' + y] || null)); }
+  const WCLayer = L.GridLayer.extend({ createTile(c, done) {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+    if (c.z < 10) { setTimeout(() => done(null, cv), 0); return cv; }
+    const zs = Math.min(c.z, 13), f = 2 ** (c.z - zs), xs = Math.floor(c.x / f), ys = Math.floor(c.y / f);
+    wcTile(zs, xs, ys, b => { if (!b) return done(null, cv); const im = new Image();
+      im.onload = () => { const g = cv.getContext('2d'); g.imageSmoothingEnabled = false; const w = 256 / f; g.drawImage(im, (c.x % f) * w, (c.y % f) * w, w, w, 0, 0, 256, 256); done(null, cv); };
+      im.onerror = () => done(null, cv); im.src = 'data:image/png;base64,' + b; });
+    return cv; } });
+  const wcLayer = new WCLayer({ opacity: .55, minZoom: 10, maxZoom: 19, zIndex: 5, attribution: 'Built-up hint: ESA WorldCover 2021 (CC BY 4.0)' });
+  $('wc-on').onchange = e => { e.target.checked ? wcLayer.addTo(map) : map.removeLayer(wcLayer); status(e.target.checked ? 'built-up hint on (from zoom 10): orange = built-up in ESA WorldCover 2021; houses under trees are often missed' : 'built-up hint off'); };
+  // tap-to-draft: the built-up hint around the tap, closed over gardens (about 70 m), holes filled, the patch under the tap outlined
+  const N13 = 256 * 2 ** 13;
+  const gx = lon => (lon + 180) / 360 * N13, gy = lat => (1 - Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) / Math.PI) / 2 * N13;
+  const glon = x => x / N13 * 360 - 180, glat = y => 360 / Math.PI * Math.atan(Math.exp(Math.PI * (1 - 2 * y / N13))) - 90;
+  let draftMode = false;
+  $('tapdraft').onclick = () => { if (!PM) { status('drawing tools did not load — reload with unpkg.com reachable'); return; }
+    draftMode = !draftMode; $('tapdraft').setAttribute('aria-pressed', String(draftMode)); map.getContainer().classList.toggle('adding', draftMode);
+    if (!draftMode) return status('draft from built-up off');
+    if (!map.hasLayer(wcLayer)) { $('wc-on').checked = true; wcLayer.addTo(map); }
+    if (baseName !== 's2') setBase('s2', document.querySelector('[data-base="s2"]'));
+    status('tap inside the village — a draft grows from the orange built-up patches around the tap (zoom 13–15 works best)'); };
+  map.on('click', e => { if (!draftMode || (PM && map.pm.globalDrawModeEnabled())) return; draftMode = false; $('tapdraft').setAttribute('aria-pressed', 'false'); map.getContainer().classList.remove('adding'); draftAt(e.latlng); });
+  function draftAt(ll) {
+    const S = 200, h = S / 2, x0 = Math.floor(gx(ll.lng)) - h, y0 = Math.floor(gy(ll.lat)) - h, M = new Uint8Array(S * S), tiles = [];
+    for (let ty = Math.floor(y0 / 256); ty <= Math.floor((y0 + S - 1) / 256); ty++) for (let tx = Math.floor(x0 / 256); tx <= Math.floor((x0 + S - 1) / 256); tx++) tiles.push([tx, ty]);
+    let left = tiles.length; status('drafting…');
+    const fin = () => { if (--left === 0) grow(); };
+    tiles.forEach(([tx, ty]) => wcTile(13, tx, ty, b => { if (!b) return fin(); const im = new Image();
+      im.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); g.drawImage(im, 0, 0); const d = g.getImageData(0, 0, 256, 256).data;
+        for (let j = 0; j < 256; j++) { const Y = ty * 256 + j - y0; if (Y < 0 || Y >= S) continue; for (let i = 0; i < 256; i++) { const X = tx * 256 + i - x0; if (X >= 0 && X < S && d[(j * 256 + i) * 4 + 3] > 0) M[Y * S + X] = 1; } }
+        fin(); };
+      im.onerror = fin; im.src = 'data:image/png;base64,' + b; }));
+    function dilate(A, r) { const B = new Uint8Array(S * S), off = []; for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (dx * dx + dy * dy <= r * r) off.push([dx, dy]);
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (A[y * S + x]) for (const [dx, dy] of off) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < S && Y < S) B[Y * S + X] = 1; } return B; }
+    function grow() {
+      const r = 5, D = dilate(M, r), inv = D.map(v => 1 - v), E = dilate(inv, r).map(v => 1 - v);
+      const seen = new Uint8Array(S * S), q = [];   // fill holes: background reachable from the window edge
+      for (let i = 0; i < S; i++) for (const p of [i, (S - 1) * S + i, i * S, i * S + S - 1]) if (!E[p] && !seen[p]) { seen[p] = 1; q.push(p); }
+      while (q.length) { const p = q.pop(), x = p % S, y = (p / S) | 0; for (const [X, Y] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) { if (X < 0 || Y < 0 || X >= S || Y >= S) continue; const k = Y * S + X; if (!E[k] && !seen[k]) { seen[k] = 1; q.push(k); } } }
+      const F = new Uint8Array(S * S); for (let k = 0; k < S * S; k++) F[k] = E[k] || !seen[k] ? 1 : 0;
+      let seed = h * S + h;
+      if (!F[seed]) { let best = -1, bd = 26 * 26; for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (F[y * S + x]) { const d = (x - h) ** 2 + (y - h) ** 2; if (d < bd) { bd = d; best = y * S + x; } } seed = best; }
+      if (seed < 0) return status('no built-up patch within about 350 m of the tap — draw this one by hand (Draw)');
+      const C = new Uint8Array(S * S); C[seed] = 1; const st = [seed]; let edge = false, n = 0;
+      while (st.length) { const p = st.pop(), x = p % S, y = (p / S) | 0; n++; if (x === 0 || y === 0 || x === S - 1 || y === S - 1) edge = true;
+        for (const [X, Y] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) { if (X < 0 || Y < 0 || X >= S || Y >= S) continue; const k = Y * S + X; if (F[k] && !C[k]) { C[k] = 1; st.push(k); } } }
+      // outline: pixel edges with outside on their left, chained into rings; the biggest ring is the outer edge
+      const nxt = new Map(), key = (x, y) => x + ',' + y, add = (a, b, c, d) => { const k = key(a, b); (nxt.get(k) || nxt.set(k, []).get(k)).push([c, d]); }, inC = (x, y) => x >= 0 && y >= 0 && x < S && y < S && C[y * S + x];
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (C[y * S + x]) {
+        if (!inC(x, y - 1)) add(x, y, x + 1, y); if (!inC(x + 1, y)) add(x + 1, y, x + 1, y + 1); if (!inC(x, y + 1)) add(x + 1, y + 1, x, y + 1); if (!inC(x - 1, y)) add(x, y + 1, x, y); }
+      let best = null, bestA = 0;
+      while (nxt.size) { const k0 = nxt.keys().next().value; const ring = []; let k = k0;
+        while (nxt.has(k)) { const l = nxt.get(k), e = l.pop(); if (!l.length) nxt.delete(k); const [a, b] = k.split(',').map(Number); ring.push([a, b]); k = key(e[0], e[1]); if (k === k0) break; }
+        let A = 0; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) A += (ring[j][0] + ring[i][0]) * (ring[j][1] - ring[i][1]); if (Math.abs(A) > bestA) { bestA = Math.abs(A); best = ring; } }
+      if (!best || best.length < 4) return status('the built-up patch here is too small to outline — draw it by hand');
+      const rdp = (P, t) => { if (P.length < 3) return P; let d = 0, i = 0; const [a, b] = [P[0], P[P.length - 1]], L2 = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
+        for (let k = 1; k < P.length - 1; k++) { const p = P[k], dd = L2 ? Math.abs((b[1] - a[1]) * p[0] - (b[0] - a[0]) * p[1] + b[0] * a[1] - b[1] * a[0]) / Math.sqrt(L2) : Math.hypot(p[0] - a[0], p[1] - a[1]); if (dd > d) { d = dd; i = k; } }
+        return d > t ? rdp(P.slice(0, i + 1), t).slice(0, -1).concat(rdp(P.slice(i), t)) : [a, b]; };
+      const half = Math.floor(best.length / 2), simp = rdp(best.slice(0, half + 1), 0.9).slice(0, -1).concat(rdp(best.slice(half).concat([best[0]]), 0.9).slice(0, -1));
+      const lls = simp.map(([x, y]) => [glat(y0 + y), glon(x0 + x)]);
+      if (work) map.removeLayer(work);
+      const lyr = L.polygon(lls).addTo(map); lyr._zdirty = true; lyr._zdraft = true; setWork(lyr); keepWork();
+      const ha = Math.round(n * (156543.03 / 2 ** 13 * Math.cos(ll.lat * Math.PI / 180)) ** 2 / 1e4);
+      status('draft of about ' + ha + ' ha' + (edge ? ' — it runs to the edge of the 2.8 km window, so it is part of a bigger built-up area: trim it' : '') + '. Press Edit to move vertices (add gardens, cut fields), then Save — it is saved as drafted from WorldCover and checked by you');
+    }
+  }
+  // clean mode: Sentinel-2 2016 only; the old line of the outline being redone is hidden; queues of what is not clean yet (data/clean)
+  window.ZSS.clean = d => { CLEANQ = d; cleanCount(); };
+  function cleanCount() { const el = $('clean-n'); if (!el) return; if (!CLEANQ) { el.textContent = 'list of outlines and dots to redo not loaded yet'; return; }
+    el.textContent = 'Still to make clean: ' + (CLEANQ.o.length - cleanI) + ' outlines (traced over Esri or Google) and ' + (CLEANQ.d.length - cleanD) + ' dots (placed over Esri, OSM or Google). Counts as of ' + (CLEANQ.at || 'the last update') + '.'; }
+  $('clean-on').onchange = e => { CLEAN = e.target.checked; $('clean-box').hidden = !CLEAN;
+    if (CLEAN) { setBase('s2', document.querySelector('[data-base="s2"]')); if (map.hasLayer(labels)) { map.removeLayer(labels); $('labels').checked = false; } const cc = $('cc').value.trim(); if (!CLEANQ && cc) loadScript('data/clean/' + cc + '.js' + VB, () => status('no clean-up list for ' + cc)); }
+    document.querySelectorAll('[data-base]').forEach(b => { if (b.dataset.base !== 's2') b.disabled = CLEAN; }); $('labels').disabled = CLEAN;
+    restyleOwn(); cleanCount(); status(CLEAN ? 'clean mode: Sentinel-2 2016 only; the outline you redo has its old line hidden; saves are marked clean' : 'clean mode off'); };
+  $('clean-next').onclick = () => { if (!CLEANQ || cleanI >= CLEANQ.o.length) return status('nothing left on the list');
+    const [code, name] = CLEANQ.o[cleanI++]; if (work) { map.removeLayer(work); work = null; setWork(null); }
+    const rs = ringsOf(code), p = villagePoint(code) || unitPoint(code); selectCode(code, name, p ? p[0] : null, p ? p[1] : null);
+    if (rs.length) map.fitBounds(L.latLngBounds(rs.flat()).pad(0.4)); else if (p) map.setView(p, 15);
+    cleanCount(); status(name + ' (' + code + '): its old line is hidden — Draw it fresh, or Draft from built-up, then Save'); };
+  $('clean-dot').onclick = () => { if (!CLEANQ || cleanD >= CLEANQ.d.length) return status('no dots left on the list');
+    const [code, name] = CLEANQ.d[cleanD++], d = pts.find(q => q.code === code); cleanDot = d ? { code, name, lat: d.lat, lon: d.lon } : null; $('clean-dotrow').hidden = !cleanDot;
+    if (!d) { cleanCount(); return status(code + ' has no dot on the map now — skipped'); }
+    map.setView([d.lat, d.lon], 16); markSel(d.lat, d.lon); cleanCount(); status(name + ': is the dot on the village? If yes, Dot is right; if not, Move dots, drag it, Save'); };
+  $('clean-dotok').onclick = () => { if (!cleanDot) return; const c = cleanDot;
+    const d = { type: 'zss-dot', action: 'confirm', code: c.code, name: c.name, kind: null, level: c.code.split('.').length, lat: +c.lat.toFixed(6), lon: +c.lon.toFixed(6), old: { lat: +c.lat.toFixed(6), lon: +c.lon.toFixed(6) },
+      placed_at: new Date().toISOString().slice(0, 10), by: ($('who').value || '').toUpperCase() || null, zoom: map.getZoom(), over: baseLabel() };
+    const fname = c.code + '.dot.json', text = JSON.stringify(d, null, 1), file = new File([text], fname, { type: 'application/json' });
+    const done = m => { status(m); $('clean-dotrow').hidden = true; cleanDot = null; };
+    if (dirHandle) ownDir(true).then(own => own.getFileHandle(fname, { create: true })).then(fh => fh.createWritable()).then(w => w.write(text).then(() => w.close())).then(() => done('saved geometry/own/' + fname + ' — checked on Sentinel-2 2016')).catch(e => status('not saved: ' + e.message));
+    else if (NOFS && navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file] }).then(() => done('shared ' + fname + ' — it belongs in OneDrive/Desktop/ZSS FILES/register/geometry/own')).catch(e => status(e.name === 'AbortError' ? 'not shared' : 'share failed: ' + e.message));
+    else { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = fname; a.click(); done('downloaded ' + fname); } };
+  function trySave() { if (CLEAN && baseName !== 's2') { status('clean mode: switch to Sentinel-2 2016 before saving'); return; } const fc = feature(); if (!fc) return; guarded(fc, () => NOFS ? shareFC(fc) : writeFC(fc), trySave); }
   function tryDownload() { const fc = feature(); if (!fc) return; guarded(fc, () => downloadFC(fc), tryDownload); }
   $('save').onclick = trySave;
   $('dl').onclick = tryDownload;
